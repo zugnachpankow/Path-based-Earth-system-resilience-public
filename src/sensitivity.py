@@ -9,6 +9,8 @@ from SALib.sample import saltelli
 from SALib.analyze import sobol
 from pyDOE import lhs
 
+SEED = 1234   # reproducible Saltelli + LHS Monte-Carlo sampling
+
 problem = {
     'num_vars': 4,
     'names': ['res_x', 'res_y', 'rate', 'tipping'],
@@ -56,7 +58,7 @@ def run_sobol_mc(rm, tip_prob, save_path, sc, N=1024, N_mc=10000):
         param_values, Y, Si = d['param_values'], d['Y'], d['Si']
     else:
         print(f"Computing Sobol for {sc} …")
-        param_values = saltelli.sample(problem, N, calc_second_order=True)
+        param_values = saltelli.sample(problem, N, calc_second_order=True, seed=SEED)
         Y = np.array([
             resilience_index(rm, int(p[0]), p[1], p[2], p[3], tip_prob_sc)
             for p in tqdm(param_values, desc=f"Sobol {sc}")
@@ -73,6 +75,7 @@ def run_sobol_mc(rm, tip_prob, save_path, sc, N=1024, N_mc=10000):
         baseline_no_tip, baseline_tip = d['baseline_no_tip'], d['baseline_tip']
     else:
         print(f"Computing MC for {sc} …")
+        np.random.seed(SEED)   # pyDOE lhs draws from NumPy's global RNG
         lhs_samples = lhs(4, samples=N_mc, criterion='maximin')
         param_mc = np.zeros_like(lhs_samples)
         for i, (lo, hi) in enumerate(problem['bounds']):

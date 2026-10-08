@@ -355,8 +355,10 @@ def compute_co2_reduction_GtCO2(df_base, df_candidate, target_year,
                                  co2_vars=("CO2 FFI", "CO2 AFOLU")):
     """
     CO₂ (FFI + AFOLU) reduction at target_year (positive = candidate emits less).
-    Returns GtCO2/yr (native units of the emissions CSV).
-    Note: does NOT apply GWP conversions for other species, pure CO2 only.
+    NOTE ON UNITS: despite the name, this returns the reduction in the emissions CSV's
+    native units, which are **Mt CO₂/yr** — divide by 1000 for GtCO₂/yr (done downstream
+    in 17_figures_calculator.py / 32_tables_fig4.py; the published GtCO₂ numbers are
+    therefore correct). Does NOT apply GWP conversions for other species, pure CO2 only.
     """
     year_col = str(float(target_year))
     if year_col not in df_base.columns:

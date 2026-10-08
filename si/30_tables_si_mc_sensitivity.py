@@ -32,8 +32,8 @@ for sc in FOCAL:
     for i, p in enumerate(PARAMS):
         rows.append({
             "Scenario": get_scenario_type(sc), "Parameter": p,
-            "S1": round(float(Si["S1"][i]), 3), "S1 95% CI": round(float(Si["S1_conf"][i]), 3),
-            "ST": round(float(Si["ST"][i]), 3), "ST 95% CI": round(float(Si["ST_conf"][i]), 3),
+            "S1": round(float(Si["S1"][i]), 4), "S1 95% CI": round(float(Si["S1_conf"][i]), 4),
+            "ST": round(float(Si["ST"][i]), 4), "ST 95% CI": round(float(Si["ST_conf"][i]), 4),
         })
 
 df = pd.DataFrame(rows)

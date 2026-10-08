@@ -19,3 +19,4 @@ SALib==1.5.2
 pyDOE==0.3.8
 cmcrameri==1.9
 openpyxl==3.1.5
+tabulate==0.9.0        # DataFrame.to_markdown() in the table scripts

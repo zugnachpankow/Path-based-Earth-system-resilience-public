@@ -1,6 +1,6 @@
 # Path-based Earth-System Resilience
 
-Code base for the forthcoming publication "Ambitious emission reductions maintain Earth resilience, conditional on climate-carbon feedbacks and tipping points".
+Code base for the forthcoming publication "Ambitious emission reductions maintain Earth resilience, conditional on climate and carbon feedbacks and tipping points".
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPLv3-blue.svg)](LICENSE)
 [![DOI](https://img.shields.io/badge/DOI-pending-blue)](https://doi.org/PENDING)
@@ -79,7 +79,7 @@ root; supplementary scripts and the SLURM batch scripts live in subfolders.
 ### Clone
 ```bash
 git clone https://github.com/zugnachpankow/Path-based-Earth-system-resilience-public.git
-cd Path-based-Earth-system-resilience
+cd Path-based-Earth-system-resilience-public
 ```
 
 ### Environment (conda recommended)
@@ -109,6 +109,10 @@ This repository ships **only** the small, openly-licensed **fair calibration** i
 `species_configs_properties_calibration1.4.1.csv`, `species_configs_properties_NGFS.csv`,
 `fair_units_reference.csv`, `fair_variables_reference.csv`, `volcanic_solar.csv`.
 Source: Smith, C. (2024). *fair calibration data* (v1.4.1). Zenodo. https://doi.org/10.5281/zenodo.10566813
+
+The repository also ships `data/reference/` — small warm-start seed CSVs for the ambition
+calculator (`12_finder.py`, `13_gfp_percentile.py`). They are optional: the finder falls
+back to a full-bracket search if they are absent.
 
 ### Add
 

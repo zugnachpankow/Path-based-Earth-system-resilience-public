@@ -9,7 +9,7 @@
 #SBATCH --time=00:30:00
 #SBATCH --output=logs/other/%x-%j.out
 #SBATCH --error=logs/other/%x-%j.err
-#SBATCH --chdir=/home/maxbecht/ERI-cleaned
+#SBATCH --chdir=/home/maxbecht/Path-based-Earth-system-resilience-public
 
 echo "------------------------------------------------------------"
 echo "SLURM JOB ID: $SLURM_JOBID  |  $SLURM_CPUS_PER_TASK cpus/task"

@@ -63,8 +63,8 @@ _SSP_LBL_SOBOL  = {'ssp126': 'SSP1-2.6', 'ssp245': 'SSP2-4.5', 'ssp534-over': 'S
 _sobol_data_e = load_sobol(_FOCAL_SC_SOBOL)
 print(f"Sobol available for: {list(_sobol_data_e.keys())}", flush=True)
 
-# UpSet bootstrap CIs (optional — not produced by the cleaned pipeline yet)
-_UPSET_BOOT_DIR = os.path.join(FIG_DIR, "..", "bootstrap_upset")
+# UpSet bootstrap CIs from 09b -> output/bootstrap_upset/
+_UPSET_BOOT_DIR = os.path.join(FIG_DIR, "..", "output", "bootstrap_upset")
 _upset_ci = {}
 if os.path.isdir(_UPSET_BOOT_DIR):
     for _csv in sorted(_glob.glob(os.path.join(_UPSET_BOOT_DIR, "upset_bootstrap_*_B*.csv"))):

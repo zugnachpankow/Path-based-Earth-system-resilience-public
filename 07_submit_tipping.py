@@ -17,15 +17,11 @@ results_dir = os.path.join(repo, "output", "tipping")
 existing_outputs = []
 if os.path.isdir(results_dir):
     existing_outputs = os.listdir(results_dir)
-scenarios_to_run = []
-for scenario in scenarios:
-    found = False
-    for file in existing_outputs:
-        if scenario in file:
-            found = True
-            break
-    if not found:
-        scenarios_to_run.append(scenario)
+existing_set = set(existing_outputs)
+scenarios_to_run = [
+    scenario for scenario in scenarios
+    if f"{scenario}_tipping_probabilities.nc" not in existing_set   # exact match, not substring
+]
 
 print(f"Scenarios to run: {scenarios_to_run}", flush=True)
 
