@@ -17,8 +17,11 @@ dependencies:
   - climateforcing=0.3.0
   - pooch=1.8.2
   - tqdm=4.67.1
+  - networkx=3.6.1       # tipping-network graph (src/tipping.py)
+  - joblib=1.5.3         # parallelism (calculator)
   - pip
   - pip:
+      - pycascades==1.0.2  # tipping-cascade model
       - scikit-learn==1.8.0
       - SALib==1.5.2       # Sobol sampling/analysis (sensitivity)
       - pyDOE==0.3.8       # Latin-hypercube sampling (tipping ensemble)

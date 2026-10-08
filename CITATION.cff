@@ -1,0 +1,58 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it using the metadata below (and the accompanying publication)."
+title: "Path-based Earth-System Resilience"
+type: software
+authors:
+  - family-names: Bechthold
+    given-names: Max
+    email: maxbecht@pik-potsdam.de
+    affiliation: "Potsdam Institute for Climate Impact Research (PIK)"
+  - family-names: Anderies
+    given-names: "John M."
+  - family-names: Heitzig
+    given-names: Jobst
+  - family-names: Rockström
+    given-names: Johan
+  - family-names: Smith
+    given-names: Chris
+  - family-names: Winkelmann
+    given-names: Ricarda
+  - family-names: Wunderling
+    given-names: Nico
+  - family-names: Donges
+    given-names: Jonathan
+version: "1.0.0"
+date-released: "2026-10-08"
+license: AGPL-3.0-or-later
+repository-code: "https://github.com/zugnachpankow/Path-based-Earth-system-resilience-public"
+url: "https://github.com/zugnachpankow/Path-based-Earth-system-resilience-public"
+keywords:
+  - Earth resilience
+  - planetary boundaries
+  - tipping points
+  - climate emulator
+  - FaIR
+  - pycascades
+# When the paper is published, fill in the DOI/journal below so "Cite this repository"
+# points at the publication.
+preferred-citation:
+  type: article
+  title: "Ambitious emission reductions maintain Earth resilience, conditional on climate-carbon feedbacks and tipping points"
+  year: 2026
+  authors:
+    - family-names: Bechthold
+      given-names: Max
+    - family-names: Anderies
+      given-names: "John M."
+    - family-names: Heitzig
+      given-names: Jobst
+    - family-names: Rockström
+      given-names: Johan
+    - family-names: Smith
+      given-names: Chris
+    - family-names: Winkelmann
+      given-names: Ricarda
+    - family-names: Wunderling
+      given-names: Nico
+    - family-names: Donges
+      given-names: Jonathan

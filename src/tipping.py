@@ -19,7 +19,6 @@ from matplotlib.colors import to_rgb
 from mpl_toolkits.mplot3d import Axes3D
 import matplotlib.cm as cm
 import matplotlib.colors as mcolors
-import seaborn as sns
 from scipy.interpolate import griddata
 import math
 from tqdm import tqdm

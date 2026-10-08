@@ -17,9 +17,10 @@ Code base for the forthcoming publication "Ambitious emission reductions maintai
 4. [Installation](#installation)
 5. [Usage](#usage)
 6. [Data](#data)
-7. [License](#license)
-8. [Citation](#citation)
-9. [Contact](#contact)
+7. [Used software](#used-software)
+8. [License](#license)
+9. [Citation](#citation)
+10. [Contact](#contact)
 
 ---
 
@@ -30,7 +31,7 @@ This project quantifies the **path-based resilience** given a climate mitigation
 - **Rate** — the warming rate never exceeds a threshold (default 0.4 °C per decade);
 - **Tipping** — weighted by the committed probability of triggering a tipping cascade (GIS / THC / WAIS / AMAZ).
 
-The pipeline also provides a Sobol/Monte-Carlo sensitivity analysis of the criterion parameters, a generalised feedback parameter (GFP) view, and an "ambition calculator" translating a target resilience gain into required emission cuts.
+The pipeline also provides a Sobol/Monte-Carlo sensitivity analysis of the criterion parameters, a generalised feedback parameter (GFP) view, and an "ambition calculator" translating a target resilience gain into required emission cuts (example figure below).
 
 ![Emission "ambition calculator": required additional NDC reduction for a target path-based resilience gain.](figures/example/calculator_combined.png)
 
@@ -133,12 +134,45 @@ Source: Nicholls, Z., & Lewis, J. (2021). *RCMIP protocol* (v5.1.0). Zenodo. htt
 
 ---
 
+## Used software
+
+Written in Python 3.14; exact versions are pinned in [`environment.yml`](environment.yml) /
+[`requirements.txt`](requirements.txt). 
+
+**Core scientific software:**
+
+| Package | Version | Citation |
+|---|---|---|
+| FaIR | 2.2.3 | Leach et al. (2021), *FaIRv2.0.0*, Geosci. Model Dev. 14, 3007–3036. Calibration data: Smith (2024), Zenodo [10.5281/zenodo.10566813](https://doi.org/10.5281/zenodo.10566813) |
+| pycascades | 1.0.2 | Wunderling et al. (2021), *pycascades: a Python framework for simulating tipping cascades on complex networks*, Eur. Phys. J. Spec. Top. |
+| SALib | 1.5.2 | Herman & Usher (2017), JOSS 2(9):97; Iwanaga, Usher & Herman (2022), *Toward SALib 2.0* |
+| Scientific colour maps (`cmcrameri`) | 1.9 | Crameri, Zenodo [10.5281/zenodo.1243862](https://doi.org/10.5281/zenodo.1243862); Crameri, Shephard & Heron (2020), *The misuse of colour in science communication*, Nat. Commun. 11:5444 |
+
+**Trajectory plots:** the UpSet set-intersection plots are hand-implemented (no package) — cite Lex, Gehlenborg, Strobelt, Vuillemot & Pfister (2014), *UpSet: Visualization of Intersecting Sets*, IEEE TVCG 20(12):1983–1992.
+
+**Scientific-Python stack:**
+
+| Package | Version | Citation |
+|---|---|---|
+| NumPy | 2.3.5 | Harris et al. (2020), Nature 585:357 |
+| SciPy | 1.16.3 | Virtanen et al. (2020), Nat. Methods 17:261 |
+| pandas | 2.3.3 | McKinney (2010); pandas development team (Zenodo) |
+| Matplotlib | 3.10.8 | Hunter (2007), Comput. Sci. Eng. 9(3):90 |
+| xarray | 2025.11.0 | Hoyer & Hamman (2017), J. Open Res. Softw. 5(1):10 |
+| scikit-learn | 1.8.0 | Pedregosa et al. (2011), JMLR 12:2825 |
+| statsmodels | 0.14.6 | Seabold & Perktold (2010), Proc. SciPy |
+| networkx | 3.6.1 | Hagberg, Schult & Swart (2008), Proc. SciPy |
+
+**Infrastructure:** `netCDF4` 1.7.3, `tqdm` 4.67.1, `joblib` 1.5.3, `pyDOE` 0.3.8, `pooch` 1.8.2, `climateforcing` 0.3.0, `openpyxl` 3.1.5.
+
+---
+
 ## License
 This project is licensed under the GNU Affero General Public License v3.0 (AGPL-3.0) — see [`LICENSE`](LICENSE).
 
 ## Citation
-If you use this code, please cite:
-- Software: <!-- FILL IN: Zenodo software DOI -->
+If you use this code, please cite the repository (see [`CITATION.cff`](CITATION.cff)) and:
+- Software archive: <!-- FILL IN: Zenodo software DOI -->
 - The accompanying publication: TBD
 
 ## Contact
