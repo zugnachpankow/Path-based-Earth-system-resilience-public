@@ -1,0 +1,26 @@
+name: fair
+# Conda environment for the path-based Earth-system resilience pipeline.
+# Pinned to the versions used for the publication; other versions may work but exact
+# reproducibility is only guaranteed with these.
+channels:
+  - conda-forge
+dependencies:
+  - python=3.14
+  - fair=2.2.3            # FaIR 2.2.3 climate emulator
+  - numpy=2.3.5
+  - pandas=2.3.3
+  - xarray=2025.11.0
+  - scipy=1.16.3
+  - matplotlib-base=3.10.8
+  - netcdf4=1.7.3
+  - statsmodels=0.14.6
+  - climateforcing=0.3.0
+  - pooch=1.8.2
+  - tqdm=4.67.1
+  - pip
+  - pip:
+      - scikit-learn==1.8.0
+      - SALib==1.5.2       # Sobol sampling/analysis (sensitivity)
+      - pyDOE==0.3.8       # Latin-hypercube sampling (tipping ensemble)
+      - cmcrameri==1.9      # perceptually-uniform colour maps (figures)
+      - openpyxl==3.1.5     # read the raw NGFS .xlsx (00_clean_NGFS_IAM.py)
