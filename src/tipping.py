@@ -45,7 +45,7 @@ from tqdm import trange
 
 # shared LHS tipping parameters (single source of truth; used here + by the
 # feedback analysis + the calculator, so sample indices stay aligned)
-from tipping_params import param_bounds, pf_bounds, sample_lhs_params
+from tipping_params import param_bounds, pf_bounds, sample_lhs_params, T_END
 
 from scipy.integrate import quad
 
@@ -311,7 +311,7 @@ elements = ["GIS", "THC", "WAIS", "AMAZ"]
 
 
 def compute_tip_prob(temperature_da, params, n_samples, configs, runs,
-                     t_start=0, t_end=15000, n_eval=1001, n_jobs=n_jobs, convert_tau=True):
+                     t_start=0, t_end=T_END, n_eval=None, n_jobs=n_jobs, convert_tau=True):
     """Tipping probabilities for one scenario's temperature field.
 
     Parameters
@@ -328,6 +328,8 @@ def compute_tip_prob(temperature_da, params, n_samples, configs, runs,
     Returns (prob_any_tipping, prob_any_tipping_sample, prob_element_tipping)
     DataArrays.
     """
+    if n_eval is None:
+        n_eval = int(np.ceil((t_end - t_start) / 50.0)) + 1   # output spacing <= 50 yr
     t_eval = np.linspace(t_start, t_end, n_eval)
 
     def run_single_sample(i, gmt_function):
