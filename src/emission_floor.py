@@ -10,30 +10,9 @@ converted to each variable's CSV unit before it is compared against CSV values
 """
 import pandas as pd
 
-from fair.structure.units import (
-    compound_convert,
-    desired_emissions_units,
-    prefix_convert,
-    time_convert,
-)
+from fair.structure.units import desired_emissions_units
 from fair_config import SPECIES_CONFIGS_NGFS
-
-
-def _emissions_unit_factor(src_unit, tgt_unit):
-    """Factor converting an emission rate from ``src_unit`` to ``tgt_unit``.
-
-    Units look like ``"Mt N2O/yr"``. Raises ``KeyError`` on an unknown prefix,
-    compound or time token (fail loud rather than silently skip).
-    """
-    src_prefix, src_rest = src_unit.split()
-    tgt_prefix, tgt_rest = tgt_unit.split()
-    src_compound, src_time = src_rest.split("/")
-    tgt_compound, tgt_time = tgt_rest.split("/")
-    return (
-        prefix_convert[src_prefix][tgt_prefix]
-        * compound_convert[src_compound][tgt_compound]
-        * time_convert[src_time][tgt_time]
-    )
+from units import emissions_unit_factor
 
 
 def build_floor_map(df_emissions, species_file=SPECIES_CONFIGS_NGFS):
@@ -54,6 +33,6 @@ def build_floor_map(df_emissions, species_file=SPECIES_CONFIGS_NGFS):
     for variable, csv_unit in units.items():
         value = float(base.get(variable, 0.0))
         if value != 0.0 and variable in desired_emissions_units:
-            value *= _emissions_unit_factor(desired_emissions_units[variable], csv_unit)
+            value *= emissions_unit_factor(desired_emissions_units[variable], csv_unit)
         floors[variable] = value
     return floors

@@ -6,6 +6,7 @@ import os, sys
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "src"))
 from rcmip import clean_rcmip_historical_for_fair
 from emission_floor import build_floor_map
+from units import convert_emissions
 
 """This script cleans and extends the NGFS scenarios for use in FAIR."""
 
@@ -130,40 +131,24 @@ df1_expanded = pd.concat(
     ignore_index=True
 )
 
-# harmonize units
+# harmonize units: convert each NGFS variable to its RCMIP (fair) target unit.
 # make dictionary of variable -> unit from df1
 unit_map = df1.groupby("variable")["unit"].first().to_dict()
 
-# define some basic conversions
-unit_conversion = {
-    ("Mt CO2/yr", "Gt CO2/yr"): 1/1000,
-    ("Gt CO2/yr", "Mt CO2/yr"): 1000,
-    ("kt CO2/yr", "Mt CO2/yr"): 1/1000,
-    ("Mt CH4/yr", "Gt CH4/yr"): 1/1000,
-    ("Gt CH4/yr", "Mt CH4/yr"): 1000,
-    ("kt SO2/yr", "Mt SO2/yr"): 1/1000,
-    ("Mt SO2/yr", "kt SO2/yr"): 1000,
-    ("kt N2O/yr", "Mt N2O/yr"): 1/1000,
-    ("Mt N2O/yr", "kt N2O/yr"): 1000,
-    # RCMIP labels NOx "Mt NOx/yr"; NGFS uses the NO2-mass basis "Mt NO2/yr". fair
-    # treats them as identical mass (compound_convert['NO2']['NOx'] == 1.0), so this
-    # is a pure relabel to make the merge keys line up.
-    ("Mt NO2/yr", "Mt NOx/yr"): 1,
-}
-
-# apply conversions
+# convert via fair's own unit tables (src/units.convert_emissions); an unknown
+# unit pair now RAISES instead of being silently left unconverted (the old
+# hand-written dict + ``if factor:`` skipped anything it didn't list). The NOx
+# relabel Mt NO2/yr == Mt NOx/yr is handled natively (compound_convert NO2->NOx=1).
 for var, target_unit in unit_map.items():
     mask = df2["variable"] == var
     if mask.any():
         current_unit = df2.loc[mask, "unit"].iloc[0]
         if current_unit != target_unit:
-            factor = unit_conversion.get((current_unit, target_unit))
-            if factor:
-                df2.loc[mask, year_cols_df2] *= factor
-                df2.loc[mask, "unit"] = target_unit
-                print(f"Converted {current_unit} → {target_unit} for {var}")
-            else:
-                print(f"No conversion rule from {current_unit} → {target_unit} for {var}")
+            df2.loc[mask, year_cols_df2] = convert_emissions(
+                df2.loc[mask, year_cols_df2].values, current_unit, target_unit
+            )
+            df2.loc[mask, "unit"] = target_unit
+            print(f"Converted {current_unit} → {target_unit} for {var}")
 
 df2.to_csv("data/processed/NGFS_only_cleaned.csv", index=False)
 
