@@ -38,7 +38,9 @@ from scipy.interpolate import interp1d
 from scipy.integrate import solve_ivp
 
 from pycascades.core.coupling import coupling
-from pycascades.core.tipping_element import cusp
+# cusp is vendored locally (src/tipping_element.py) because it needs a callable control c(t);
+# a fresh `pip install pycascades==1.0.2` ships a scalar-c cusp and crashes here.
+from tipping_element import cusp
 
 import networkx as nx
 from tqdm import trange
@@ -358,7 +360,14 @@ def compute_tip_prob(temperature_da, params, n_samples, configs, runs,
             rtol=1e-3,
             method="LSODA"
         )
-        return np.any(sol.y > 0.0, axis=1)
+        # a failed solve is NaN (never silently counted as "not tipped");
+        # also return the final-time state to cross-check "any x>0" over the trajectory.
+        if (not sol.success) or sol.y.shape[1] == 0:
+            nan4 = np.full(4, np.nan)
+            return nan4, False, nan4
+        tipped = np.any(sol.y > 0.0, axis=1).astype(float)
+        final = (sol.y[:, -1] > 0.0).astype(float)
+        return tipped, True, final
 
     prob_any = xr.DataArray(
         np.nan,
@@ -379,6 +388,8 @@ def compute_tip_prob(temperature_da, params, n_samples, configs, runs,
         name="prob_element_tipping"
     )
 
+    n_solver_failures = 0
+    n_tip_final_disagreements = 0
     for config in tqdm(configs, desc="Config"):
         for run in runs:
 
@@ -411,11 +422,26 @@ def compute_tip_prob(temperature_da, params, n_samples, configs, runs,
             results = Parallel(n_jobs=n_jobs)(
                 delayed(run_single_sample)(i, gmt_function) for i in range(n_samples)
             )
-            tipped = np.vstack(results)
+            tipped = np.vstack([r[0] for r in results])        # (n_samples, 4); NaN rows = failed
+            success = np.array([r[1] for r in results], dtype=bool)
+            final = np.vstack([r[2] for r in results])
+            n_solver_failures += int((~success).sum())
+            if success.any():
+                # transient disagreements: "any x>0 over the run" vs "x>0 at the final time"
+                n_tip_final_disagreements += int((tipped[success] != final[success]).sum())
 
-            # --- probabilities
-            prob_any.loc[config, run] = np.any(tipped, axis=1).mean()
-            prob_any_sample.loc[:, config, run] = np.any(tipped, axis=1)
-            prob_elements.loc[config, run, :] = tipped.mean(axis=0)
+            # --- probabilities (failed solves stay NaN; never counted as "not tipped")
+            any_per_sample = np.full(n_samples, np.nan)
+            if success.any():
+                any_per_sample[success] = tipped[success].any(axis=1)
+            prob_any.loc[config, run] = np.nanmean(any_per_sample) if success.any() else np.nan
+            prob_any_sample.loc[:, config, run] = any_per_sample
+            prob_elements.loc[config, run, :] = np.nanmean(tipped, axis=0)
 
+    prob_any.attrs["n_solver_failures"] = n_solver_failures
+    prob_any.attrs["n_tip_final_disagreements"] = n_tip_final_disagreements
+    if n_solver_failures:
+        import warnings
+        warnings.warn(f"compute_tip_prob: {n_solver_failures} solver failure(s) set to NaN "
+                      f"(not counted as 'not tipped').")
     return prob_any, prob_any_sample, prob_elements
