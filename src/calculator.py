@@ -15,6 +15,7 @@ from tqdm import tqdm, trange
 
 from monte_carlo_runner import monte_carlo_fair
 from fair_config import load_fair_params
+from emission_floor import build_floor_map
 from tipping import compute_tip_prob
 from tipping_params import sample_lhs_params
 
@@ -496,10 +497,10 @@ def evaluate_candidate(reduction_frac, df_emissions, years, year_cols,
     df_base = df_emissions[df_emissions["scenario"] == base_scenario_name].copy()
 
     # ── 1. build candidate scenario ──────────────────────────────────────────
-    # natural-background floor per species (FaIR baseline_emissions), matching the
-    # Current-Policies branch-off grid (02) so panels a and b/c clamp consistently.
-    _sp = pd.read_csv(species_configs_file)
-    baseline_map = dict(zip(_sp["name"], _sp["baseline_emissions"].fillna(0.0)))
+    # natural-background floor per species (FaIR baseline_emissions, converted to
+    # each variable's CSV unit), matching the Current-Policies branch-off grid (02)
+    # so panels a and b/c clamp consistently.
+    baseline_map = build_floor_map(df_emissions, species_file=species_configs_file)
     df_candidate = build_candidate_scenario(
         df_emissions, years, year_cols,
         base_scenario_name, target_year, reduction_frac, candidate_name,

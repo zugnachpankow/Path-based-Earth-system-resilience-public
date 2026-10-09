@@ -5,6 +5,7 @@ import os, sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "src"))
 from rcmip import clean_rcmip_historical_for_fair
+from emission_floor import build_floor_map
 
 """This script cleans and extends the NGFS scenarios for use in FAIR."""
 
@@ -237,7 +238,8 @@ def expand_for_running_mean(
     year_cols,
     interpolation_range_start=2090.5,
     interpolation_range_end=2100.5,
-    extensions_length=2
+    extensions_length=2,
+    floor_map=None,
 ):
     # find positions
     idx_start = np.argmin(np.abs(years - interpolation_range_start))
@@ -264,6 +266,13 @@ def expand_for_running_mean(
         x_extra = np.array(extra_years)
         y_extra = a * x_extra + b
 
+        # clamp the extrapolation tail at the species' natural floor so a declining
+        # linear trend cannot run below background (never clamp above the last real
+        # value, so already-sub-floor trajectories like net-negative CO2 AFOLU hold).
+        if floor_map is not None:
+            floor_eff = min(floor_map.get(row["variable"], 0.0), base_vals[idx_end])
+            y_extra = np.maximum(y_extra, floor_eff)
+
         # build new row
         new_row = row.copy()
         for col, val in zip(extra_cols, y_extra):
@@ -283,7 +292,8 @@ df_extended = expand_for_running_mean(
     year_cols,
     interpolation_range_start=2090.5,
     interpolation_range_end=2100.5,
-    extensions_length=2
+    extensions_length=2,
+    floor_map=build_floor_map(df_final),
 )
 
 df_extended.to_csv("data/processed/NGFS_historic_merged_extended_to_2110.csv", index=False)

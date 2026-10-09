@@ -70,3 +70,6 @@ run_checkrate.sh
 data/raw/NGFS_cleaned_IAM_all.csv
 data/raw/rcmip-*.csv
 data/NGFS_raw/
+
+# Standalone dev tests: kept locally, never committed.
+dev/

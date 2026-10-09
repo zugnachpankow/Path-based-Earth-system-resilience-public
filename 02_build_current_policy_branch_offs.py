@@ -1,6 +1,11 @@
+import os, sys
+
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "src"))
+from emission_floor import build_floor_map
 
 """This script builds the branch off scenarios from the NGFS current policy scenario."""
 
@@ -83,11 +88,11 @@ def apply_absolute_reduction(
 reduction_rates = np.arange(0.01, 0.105, 0.01)    # 0% .. 10% inclusive
 starting_years = np.arange(2020.5, 2055.5, 5.0)    # 2020.5 .. 2100.5 inclusive
 
-# natural background floor per species (fair baseline_emissions). reductions clamp
-# here, not at 0 (see apply_absolute_reduction); 17 of the 50 emitted species have a
-# non-zero natural source, the rest floor at 0.
-species = pd.read_csv("data/raw/species_configs_properties_NGFS.csv")
-baseline_map = dict(zip(species["name"], species["baseline_emissions"].fillna(0.0)))
+# natural background floor per species (fair baseline_emissions, converted to
+# each variable's CSV unit). reductions clamp here, not at 0 (see
+# apply_absolute_reduction); 17 of the 50 emitted species have a non-zero natural
+# source, the rest floor at 0.
+baseline_map = build_floor_map(df_interp)
 
 all_results = []
 
