@@ -14,6 +14,7 @@ import xarray as xr
 
 from tipping import compute_tip_prob
 from tipping_params import sample_lhs_params
+from temperature import processed_temperature
 
 # repo root (this file lives in <repo>/src/); all I/O is relative to <repo>/output,
 # which is symlinked to scratch for now.
@@ -37,9 +38,14 @@ if __name__ == "__main__":
     n_samples = 1000
     params = sample_lhs_params(n_samples=n_samples)
 
+    # tipping forcing = the SAME processed series as the temperature criterion (per-member
+    # 1850-1900 rebase + 20-yr running mean). compute_tip_prob holds the last valid value to
+    # T_END, so each scenario is held from its own last valid year.
+    forcing = processed_temperature(
+        temperature["__xarray_dataarray_variable__"].sel(scenario=scenario)
+    )
     prob_any, prob_any_sample, prob_elements = compute_tip_prob(
-        temperature["__xarray_dataarray_variable__"].sel(scenario=scenario),
-        params, n_samples=n_samples, configs=configs, runs=runs,
+        forcing, params, n_samples=n_samples, configs=configs, runs=runs,
     )
 
     ds_prob = xr.Dataset(

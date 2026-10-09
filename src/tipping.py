@@ -38,14 +38,31 @@ from scipy.interpolate import interp1d
 from scipy.integrate import solve_ivp
 
 from pycascades.core.coupling import coupling
-from pycascades.core.tipping_element import cusp
+# cusp is vendored locally (src/tipping_element.py) because it needs a callable control c(t);
+# a fresh `pip install pycascades==1.0.2` ships a scalar-c cusp and crashes here.
+from tipping_element import cusp
 
 import networkx as nx
 from tqdm import trange
 
 # shared LHS tipping parameters (single source of truth; used here + by the
 # feedback analysis + the calculator, so sample indices stay aligned)
-from tipping_params import param_bounds, pf_bounds, sample_lhs_params
+from tipping_params import param_bounds, pf_bounds, sample_lhs_params, T_END
+
+from scipy.integrate import quad
+
+# ── cusp timescale conversion (pycascades earth_system/timing.py; Wunderling et al. 2021) ──
+# The literature tipping timescale tau is the time an UNCOUPLED cusp needs to go from x=-1 to
+# x=+1 at GMT_CAL with threshold TCRIT_CAL. In dx/dt = (1/T)(-x^3 + x + c) that transition takes
+# I_CAL * T, so the ODE time constant must be T = tau / I_CAL (else every element is I_CAL too slow).
+GMT_CAL, TCRIT_CAL = 4.0, 1.8
+I_CAL = quad(lambda x: 1.0 / (-x**3 + x + np.sqrt(4 / 27) * GMT_CAL / TCRIT_CAL), -1.0, 1.0)[0]  # 2.6267
+
+
+def ode_timescale(tau):
+    """Literature tipping time tau (yr) -> ODE time constant T (yr) of the cusp."""
+    return tau / I_CAL
+
 
 class global_functions():
     """
@@ -199,14 +216,21 @@ class tipping_network(nx.DiGraph):
             #     impact_matrix[edge[1]][edge[0]]=edge['data']
         return impact_matrix
 
+# The literature timescales tau (gis_time, ...) are converted once to the cusp ODE time
+# constant T = tau / I_CAL (pycascades earth_system/timing.py; Wunderling et al. 2021). Because
+# every term — the cusp (a,b,c) and all couplings — carries the same 1/T, the conversion only
+# rescales the clock; equilibria and coupling ratios are unchanged. convert_tau=False keeps the
+# raw tau (the old, I_CAL-too-slow behaviour) for comparison only.
 class Earth_System():
     def __init__(self, gis_time, thc_time, wais_time, amaz_time, limits_gis, limits_thc, limits_wais, limits_amaz,
-                  pf_wais_to_gis, pf_thc_to_gis, pf_gis_to_thc, pf_wais_to_thc, pf_gis_to_wais, pf_thc_to_wais, pf_thc_to_amaz):
-        #timescales
-        self._gis_time = gis_time
-        self._thc_time = thc_time
-        self._wais_time = wais_time
-        self._amaz_time = amaz_time
+                  pf_wais_to_gis, pf_thc_to_gis, pf_gis_to_thc, pf_wais_to_thc, pf_gis_to_wais, pf_thc_to_wais, pf_thc_to_amaz,
+                  convert_tau=True):
+        #timescales (literature tau -> ODE time constant T = tau / I_CAL)
+        _conv = ode_timescale if convert_tau else (lambda t: t)
+        self._gis_time = _conv(gis_time)
+        self._thc_time = _conv(thc_time)
+        self._wais_time = _conv(wais_time)
+        self._amaz_time = _conv(amaz_time)
 
         #tipping limits
         self._limits_gis = limits_gis
@@ -289,7 +313,7 @@ elements = ["GIS", "THC", "WAIS", "AMAZ"]
 
 
 def compute_tip_prob(temperature_da, params, n_samples, configs, runs,
-                     t_start=0, t_end=15000, n_eval=1001, n_jobs=n_jobs):
+                     t_start=0, t_end=T_END, n_eval=None, n_jobs=n_jobs, convert_tau=True):
     """Tipping probabilities for one scenario's temperature field.
 
     Parameters
@@ -306,6 +330,8 @@ def compute_tip_prob(temperature_da, params, n_samples, configs, runs,
     Returns (prob_any_tipping, prob_any_tipping_sample, prob_element_tipping)
     DataArrays.
     """
+    if n_eval is None:
+        n_eval = int(np.ceil((t_end - t_start) / 50.0)) + 1   # output spacing <= 50 yr
     t_eval = np.linspace(t_start, t_end, n_eval)
 
     def run_single_sample(i, gmt_function):
@@ -315,7 +341,8 @@ def compute_tip_prob(temperature_da, params, n_samples, configs, runs,
 
         sys = Earth_System(
             **pr_i,
-            **pf_i
+            **pf_i,
+            convert_tau=convert_tau
         )
 
         net = sys.dynamic_earth_network(
@@ -333,7 +360,14 @@ def compute_tip_prob(temperature_da, params, n_samples, configs, runs,
             rtol=1e-3,
             method="LSODA"
         )
-        return np.any(sol.y > 0.0, axis=1)
+        # a failed solve is NaN (never silently counted as "not tipped");
+        # also return the final-time state to cross-check "any x>0" over the trajectory.
+        if (not sol.success) or sol.y.shape[1] == 0:
+            nan4 = np.full(4, np.nan)
+            return nan4, False, nan4
+        tipped = np.any(sol.y > 0.0, axis=1).astype(float)
+        final = (sol.y[:, -1] > 0.0).astype(float)
+        return tipped, True, final
 
     prob_any = xr.DataArray(
         np.nan,
@@ -354,6 +388,8 @@ def compute_tip_prob(temperature_da, params, n_samples, configs, runs,
         name="prob_element_tipping"
     )
 
+    n_solver_failures = 0
+    n_tip_final_disagreements = 0
     for config in tqdm(configs, desc="Config"):
         for run in runs:
 
@@ -386,11 +422,26 @@ def compute_tip_prob(temperature_da, params, n_samples, configs, runs,
             results = Parallel(n_jobs=n_jobs)(
                 delayed(run_single_sample)(i, gmt_function) for i in range(n_samples)
             )
-            tipped = np.vstack(results)
+            tipped = np.vstack([r[0] for r in results])        # (n_samples, 4); NaN rows = failed
+            success = np.array([r[1] for r in results], dtype=bool)
+            final = np.vstack([r[2] for r in results])
+            n_solver_failures += int((~success).sum())
+            if success.any():
+                # transient disagreements: "any x>0 over the run" vs "x>0 at the final time"
+                n_tip_final_disagreements += int((tipped[success] != final[success]).sum())
 
-            # --- probabilities
-            prob_any.loc[config, run] = np.any(tipped, axis=1).mean()
-            prob_any_sample.loc[:, config, run] = np.any(tipped, axis=1)
-            prob_elements.loc[config, run, :] = tipped.mean(axis=0)
+            # --- probabilities (failed solves stay NaN; never counted as "not tipped")
+            any_per_sample = np.full(n_samples, np.nan)
+            if success.any():
+                any_per_sample[success] = tipped[success].any(axis=1)
+            prob_any.loc[config, run] = np.nanmean(any_per_sample) if success.any() else np.nan
+            prob_any_sample.loc[:, config, run] = any_per_sample
+            prob_elements.loc[config, run, :] = np.nanmean(tipped, axis=0)
 
+    prob_any.attrs["n_solver_failures"] = n_solver_failures
+    prob_any.attrs["n_tip_final_disagreements"] = n_tip_final_disagreements
+    if n_solver_failures:
+        import warnings
+        warnings.warn(f"compute_tip_prob: {n_solver_failures} solver failure(s) set to NaN "
+                      f"(not counted as 'not tipped').")
     return prob_any, prob_any_sample, prob_elements

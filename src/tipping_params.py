@@ -6,7 +6,7 @@ from pyDOE import lhs
 param_bounds = {
     "gis_time":   (1000, 15000),
     "thc_time":   (15, 300),
-    "wais_time":  (2000, 13000),
+    "wais_time":  (500, 13000),   # Armstrong McKay 2022; Möller et al. 2024 (was 2000)
     "amaz_time":  (50, 200),
     "limits_gis":    (0.8, 3.0),
     "limits_thc":    (1.4, 8.0),
@@ -17,7 +17,11 @@ param_bounds = {
 # probability fractions (Kriegler-style + 2021 and Möller paper)
 pf_bounds = {
     "pf_wais_to_gis":  (0.1, 0.2),
-    "pf_thc_to_gis":   (-1.0, -0.1),
+    # AMOC→GIS is stabilising. Tables give signed s_ij (−10…−1); the code takes the
+    # magnitude |s|/10 and applies the sign via the minus in Earth_System's coupling line
+    # (strength=-(1/T_gis)*d*pf_thc_to_gis), as in pycascades earth.py / its LHS preparator
+    # (pf_thc_to_gis = [0.1, 1.]). (was (-1.0, -0.1), which double-negated to destabilising.)
+    "pf_thc_to_gis":   (0.1, 1.0),
     "pf_gis_to_thc":   (0.1, 1.0),
     "pf_wais_to_thc":  (-0.3, 0.3),
     "pf_gis_to_wais":  (0.1, 1.0),
@@ -36,6 +40,10 @@ all_bounds.update(strength_bounds)
 
 N_SAMPLES = 1000
 SEED = 1234
+
+# tipping integration horizon in years (was 15000). Each scenario keeps its own length; the
+# forcing is held from that scenario's last valid year (see src/temperature.py) to T_END.
+T_END = 50_000
 
 
 def sample_lhs_params(n_samples=N_SAMPLES, seed=SEED):

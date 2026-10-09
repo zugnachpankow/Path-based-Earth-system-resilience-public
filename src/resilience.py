@@ -7,6 +7,8 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
+from temperature import processed_temperature
+
 
 def load_temperature(path):
     """Load the concatenated temperature DataArray, stripping ``()`` from scenarios."""
@@ -30,25 +32,18 @@ def load_tipping(tipping_dir):
 
 
 def compute_running_means(temperature, scenarios, window=20, baseline=(1850, 1901)):
-    """20-yr centered running-mean GMST anomaly per scenario (baseline-subtracted).
+    """Per-member rebased, 20-yr centred running-mean GMST per scenario.
 
-    Members are the (run, config) combinations. The baseline is the weighted mean
-    over ``baseline`` (half-weights on the two endpoints, as in the original).
+    Members are the (run, config) combinations. The baseline is each member's own weighted
+    mean over ``baseline`` (1850..1901 inclusive, half weights on the two endpoints) — the
+    rebase now replaces the earlier single ensemble-mean scalar baseline, and both the
+    running mean and the rebase live in src/temperature.py (shared with the tipping forcing).
     Returns ``{scenario: DataArray(timebounds, member)}``.
     """
-    n = baseline[1] - baseline[0] + 1
-    weights = np.ones(n)
-    weights[0] = weights[-1] = 0.5
-
     running_means = {}
     for scenario in scenarios:
         data = temperature.sel(scenario=scenario).stack(member=("run", "config"))
-        base = np.average(
-            data.sel(timebounds=slice(*baseline)).mean("member"), weights=weights
-        )
-        rm = (data - base).rolling(timebounds=window, center=True).mean()
-        # drop the NaN edges introduced by the centered rolling window
-        running_means[scenario] = rm.dropna(dim="timebounds", how="all")
+        running_means[scenario] = processed_temperature(data, window=window, baseline=baseline)
     return running_means
 
 
