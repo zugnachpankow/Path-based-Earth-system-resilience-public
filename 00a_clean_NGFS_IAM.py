@@ -1,4 +1,4 @@
-"""00_clean_NGFS_IAM.py — reproduce data/raw/NGFS_cleaned_IAM_all.csv from the raw NGFS download.
+"""00a_clean_NGFS_IAM.py — reproduce data/raw/NGFS_cleaned_IAM_all.csv from the raw NGFS download.
 
 NGFS scenario data is licensed and must be downloaded by the user
 (https://data.ece.iiasa.ac.at/ngfs). Place the IAM-output workbook at

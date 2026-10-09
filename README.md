@@ -53,7 +53,7 @@ root; supplementary scripts and the SLURM batch scripts live in subfolders.
 
 | Stage | Scripts | What it does |
 |---|---|---|
-| Data prep | `00` | reproduce the NGFS emissions CSV from the licensed IAM workbook (see [Data](#data)) |
+| Data prep | `00a`, `00b` | `00a` reproduce the NGFS emissions CSV from the licensed IAM workbook; `00b` build the fair v1.4.0 calibration inputs (see [Data](#data)) |
 | Inputs & runs | `01`–`06` | clean/extend NGFS emissions, build branch-offs, run the fair ensemble (SSPs, NGFS, branch-offs), concatenate |
 | Tipping | `07` | submit the pycascade tipping-cascade sampler (per scenario) |
 | Preprocess | `08` | 20-yr running-mean temperatures |
@@ -94,7 +94,7 @@ conda activate fair
 Run the numbered scripts in order from the repo root. Each script reads the pipeline's pre-computed outputs and writes to `output/` (see below). The fair ensemble, pycascades tipping sampler and confirmator are heavy and are intended for the cluster (`batch/run_*.sh`); the figure/table scripts are light and run on a workstation.
 
 ### Reproducing the figures/tables
-1. Obtain the input data (see [Data](#data)): download NGFS + RCMIP + the fair v1.4.0 calibration inputs, then run `00_clean_NGFS_IAM.py` and `00b_build_fair_v140_inputs.py`.
+1. Obtain the input data (see [Data](#data)): download NGFS + RCMIP + the fair v1.4.0 calibration inputs, then run `00a_clean_NGFS_IAM.py` and `00b_build_fair_v140_inputs.py`.
 2. Regenerate intermediate output by running `01`–`14`.
 3. Run the figure/table scripts (`15`–`18` and `si/`).
 
@@ -121,7 +121,7 @@ Download the IAM-output workbook from the NGFS data portal
 (https://data.ece.iiasa.ac.at/ngfs), save it as `data/NGFS_raw/IAM_data.xlsx`
 (sheet `data`), then run:
 ```bash
-python 00_clean_NGFS_IAM.py
+python 00a_clean_NGFS_IAM.py
 ```
 This reproduces `data/raw/NGFS_cleaned_IAM_all.csv`, the input to `01_clean_and_extend_NGFS.py`.
 Source: Richters, O., Kriegler, E., Bertram, C., et al. *NGFS Climate Scenarios Data Set* (5 Nov 2024). https://doi.org/10.5281/zenodo.13989530
