@@ -47,6 +47,21 @@ from tqdm import trange
 # feedback analysis + the calculator, so sample indices stay aligned)
 from tipping_params import param_bounds, pf_bounds, sample_lhs_params
 
+from scipy.integrate import quad
+
+# ── cusp timescale conversion (pycascades earth_system/timing.py; Wunderling et al. 2021) ──
+# The literature tipping timescale tau is the time an UNCOUPLED cusp needs to go from x=-1 to
+# x=+1 at GMT_CAL with threshold TCRIT_CAL. In dx/dt = (1/T)(-x^3 + x + c) that transition takes
+# I_CAL * T, so the ODE time constant must be T = tau / I_CAL (else every element is I_CAL too slow).
+GMT_CAL, TCRIT_CAL = 4.0, 1.8
+I_CAL = quad(lambda x: 1.0 / (-x**3 + x + np.sqrt(4 / 27) * GMT_CAL / TCRIT_CAL), -1.0, 1.0)[0]  # 2.6267
+
+
+def ode_timescale(tau):
+    """Literature tipping time tau (yr) -> ODE time constant T (yr) of the cusp."""
+    return tau / I_CAL
+
+
 class global_functions():
     """
     Linear feedback function to compute feedbacks. Maximal feedback is obtained from 2.0°C onwards.
@@ -199,14 +214,21 @@ class tipping_network(nx.DiGraph):
             #     impact_matrix[edge[1]][edge[0]]=edge['data']
         return impact_matrix
 
+# The literature timescales tau (gis_time, ...) are converted once to the cusp ODE time
+# constant T = tau / I_CAL (pycascades earth_system/timing.py; Wunderling et al. 2021). Because
+# every term — the cusp (a,b,c) and all couplings — carries the same 1/T, the conversion only
+# rescales the clock; equilibria and coupling ratios are unchanged. convert_tau=False keeps the
+# raw tau (the old, I_CAL-too-slow behaviour) for comparison only.
 class Earth_System():
     def __init__(self, gis_time, thc_time, wais_time, amaz_time, limits_gis, limits_thc, limits_wais, limits_amaz,
-                  pf_wais_to_gis, pf_thc_to_gis, pf_gis_to_thc, pf_wais_to_thc, pf_gis_to_wais, pf_thc_to_wais, pf_thc_to_amaz):
-        #timescales
-        self._gis_time = gis_time
-        self._thc_time = thc_time
-        self._wais_time = wais_time
-        self._amaz_time = amaz_time
+                  pf_wais_to_gis, pf_thc_to_gis, pf_gis_to_thc, pf_wais_to_thc, pf_gis_to_wais, pf_thc_to_wais, pf_thc_to_amaz,
+                  convert_tau=True):
+        #timescales (literature tau -> ODE time constant T = tau / I_CAL)
+        _conv = ode_timescale if convert_tau else (lambda t: t)
+        self._gis_time = _conv(gis_time)
+        self._thc_time = _conv(thc_time)
+        self._wais_time = _conv(wais_time)
+        self._amaz_time = _conv(amaz_time)
 
         #tipping limits
         self._limits_gis = limits_gis
@@ -289,7 +311,7 @@ elements = ["GIS", "THC", "WAIS", "AMAZ"]
 
 
 def compute_tip_prob(temperature_da, params, n_samples, configs, runs,
-                     t_start=0, t_end=15000, n_eval=1001, n_jobs=n_jobs):
+                     t_start=0, t_end=15000, n_eval=1001, n_jobs=n_jobs, convert_tau=True):
     """Tipping probabilities for one scenario's temperature field.
 
     Parameters
@@ -315,7 +337,8 @@ def compute_tip_prob(temperature_da, params, n_samples, configs, runs,
 
         sys = Earth_System(
             **pr_i,
-            **pf_i
+            **pf_i,
+            convert_tau=convert_tau
         )
 
         net = sys.dynamic_earth_network(
