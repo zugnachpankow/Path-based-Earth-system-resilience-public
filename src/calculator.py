@@ -16,6 +16,7 @@ from tqdm import tqdm, trange
 from monte_carlo_runner import monte_carlo_fair
 from fair_config import load_fair_params
 from emission_floor import build_floor_map
+from temperature import processed_temperature
 from tipping import compute_tip_prob
 from tipping_params import sample_lhs_params
 
@@ -24,8 +25,11 @@ DEFAULT_TEMP_THRESHOLD = 1.5    # °C by year 2100
 DEFAULT_RATE_THRESHOLD = 0.04   # °C/decade, 2000–2100
 DEFAULT_YEAR_TARGET    = 2100
 
-# fair time axis: extended to 2110 so the 20-yr rolling mean is valid at 2100.
-FAIR_TIME = np.arange(1750, 2111, 1)
+# fair time axis: must match the production NGFS runs (04_run_NGFS.py uses
+# np.arange(1750, 2110)) so calculator candidates and the baseline ensemble share
+# the same timebounds -> identical running-mean edges. The emissions are extended
+# to 2110.5 so the 20-yr centred mean is still valid at 2100.
+FAIR_TIME = np.arange(1750, 2110, 1)
 
 # resolution knobs (calculator's originals; single-stage finder uses BISECT, the
 # confirmator uses FINAL)
@@ -51,8 +55,9 @@ def build_candidate_scenario(df_emissions, years, year_cols,
 
     ``baseline_map`` {variable: natural background emission} clamps each species at its
     natural floor (FaIR ``baseline_emissions``), matching the Current-Policies branch-off
-    grid (02). If None, species clamp at 0 (legacy behaviour). The floor never exceeds the
-    ramp-start value, so species already below their background are not raised.
+    grid (02). If None, species clamp at 0 (legacy behaviour). The reduction only ever
+    lowers emissions and never raises a species already below its background; at
+    ``reduction_frac == 0`` the candidate reproduces the base exactly.
 
     Parameters
     ----------
@@ -69,7 +74,6 @@ def build_candidate_scenario(df_emissions, years, year_cols,
     -------
     DataFrame with only candidate_name rows (same columns as df_emissions)
     """
-    i_base   = np.argmin(np.abs(years - ramp_start_year))
     i_target = np.argmin(np.abs(years - target_year))
 
     df_base = df_emissions[df_emissions["scenario"] == base_scenario_name].copy()
@@ -80,24 +84,25 @@ def build_candidate_scenario(df_emissions, years, year_cols,
     for _, row in df_base.iterrows():
         new_row  = row.copy()
         vals     = new_row[year_cols].astype(float).values.copy()
-        v_base       = vals[i_base]
         v_target_old = vals[i_target]
-        v_target_new = v_target_old * (1.0 - reduction_frac)
 
-        # linear ramp from ramp_start_year to target_year
+        # Apply the reduction as a ramped ABSOLUTE OFFSET subtracted from the base
+        # trajectory, preserving the base's shape. The old code overwrote the ramp
+        # window with a straight line (v_base -> v_target_new), which linearised the
+        # interior (e.g. 2030) and did NOT reproduce the base at reduction_frac == 0.
+        # With an offset, R == 0 gives offset == 0 everywhere, so candidate == base.
+        difference = v_target_old * reduction_frac          # absolute cut reached at target
+        offset = np.zeros_like(vals)
         ramp_mask = (years >= ramp_start_year) & (years <= target_year)
-        vals[ramp_mask] = np.maximum(
-            np.linspace(v_base, v_target_new, ramp_mask.sum()), 0.0
-        )
+        offset[ramp_mask] = np.linspace(0.0, difference, ramp_mask.sum())
+        offset[years > target_year] = difference
+        reduced = vals - offset
 
-        # constant absolute offset for all years after target_year
-        difference = v_target_old - v_target_new
-        vals[years > target_year] -= np.abs(difference)
-
-        # clamp at the species' natural background (or 0 if none / no map). Never above
-        # the ramp-start value, so a species already below its background isn't raised.
+        # clamp at the species' natural background; a reduction only lowers emissions
+        # and never raises a species already below background. min(base, max(reduced,
+        # floor)) also keeps R == 0 identically equal to the base.
         flr = 0.0 if baseline_map is None else float(baseline_map.get(str(row["variable"]).strip(), 0.0))
-        vals = np.maximum(vals, min(flr, v_base))
+        vals = np.minimum(vals, np.maximum(reduced, flr))
 
         new_row[year_cols] = vals
         new_row["scenario"] = candidate_name
@@ -216,17 +221,11 @@ def aggregate_temperature_from_runs(run_dir, scenario_name, max_runs=None):
     configs = raw_temp.config.values.tolist()
     runs    = raw_temp.run.values.tolist()
 
-    # 20-yr running mean with 1850–1901 baseline (matches process_data.py)
-    weights_51yr      = np.ones(52)
-    weights_51yr[0]   = 0.5
-    weights_51yr[-1]  = 0.5
-    data     = raw_temp.stack(member=("run", "config"))
-    baseline = np.average(
-        data.sel(timebounds=slice(1850, 1901)).mean("member"),
-        weights=weights_51yr,
-    )
-    run_mean = (data - baseline).rolling(timebounds=20, center=True).mean()
-    run_mean = run_mean.dropna(dim="timebounds", how="all")
+    # per-member 1850–1901 rebase -> 20-yr centred running mean, via the single
+    # shared implementation in src/temperature.py (same as resilience.py and the
+    # tipping forcing), replacing the old ensemble-mean scalar baseline so the
+    # calculator's resilience matches the main pipeline member-for-member.
+    run_mean = processed_temperature(raw_temp.stack(member=("run", "config")))
 
     return raw_temp, run_mean, configs, runs
 
@@ -441,6 +440,18 @@ def compute_fragility_masks(configs, params_file, n_terciles=3):
 # ══════════════════════════════════════════════════════════════════════════════
 # CANDIDATE EVALUATION  
 # ══════════════════════════════════════════════════════════════════════════════
+
+def gain_brackets_target(gain_lo, gain_hi, target_gain):
+    """Whether a monotone-increasing ``gain(R)`` has its ``gain == target_gain`` root
+    inside the bracket, i.e. ``gain(lo) <= target <= gain(hi)``.
+
+    The finder's bisection assumes more reduction yields more resilience gain and that
+    the seeded bracket straddles the target. If it does not (both endpoints above or
+    both below), plain bisection converges silently to a bracket edge; callers use this
+    to detect that and widen the bracket.
+    """
+    return gain_lo <= target_gain <= gain_hi
+
 
 def evaluate_candidate(reduction_frac, df_emissions, years, year_cols,
                        base_scenario_name, target_year, df_forcing_template,

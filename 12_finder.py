@@ -22,6 +22,7 @@ os.chdir(_HERE)  # resolve data/ and output/ from the repo root, not the job's c
 
 from calculator import (
     evaluate_candidate,
+    gain_brackets_target,
     N_FAIR_RUNS_BISECT,
     N_TIPPING_SAMPLES_BISECT,
     N_TIPPING_SAMPLES_FINAL,
@@ -114,6 +115,35 @@ for ty in TARGET_YEARS:
         seed = float("nan")
         lo, hi = 0.0, 0.99
     print(f"\n══ target_year={ty}  seed={seed:.4f}  bracket=[{lo:.4f}, {hi:.4f}] ══")
+
+    def _eval(R, label):
+        iter_dir = os.path.join(WORKSPACE, f"gain{TARGET_GAIN}", f"ty{int(ty)}", label)
+        return evaluate_candidate(
+            R, df_emissions, years, year_cols,
+            BASE_SCENARIO, ty, df_forcing,
+            PARAMS_FILE, SPECIES_FILE, iter_dir,
+            n_runs=N_FINDER_RUNS, n_samples=N_FINDER_SAMPLES,
+            temp_threshold=TEMP_THRESHOLD, rate_threshold=RATE_THRESHOLD,
+            year_target=YEAR_TARGET, lhs_params=lhs_params, extend=False,
+            candidate_name=f"NDC_calc__ty{int(ty)}_r{R:.6f}",
+        )
+
+    # bracket-sign check: the monotone gain(R) must straddle TARGET_GAIN across the
+    # seeded bracket, else bisection converges silently to an edge. Widen to the full
+    # [0, 0.99] if it doesn't; error if even that fails to bracket the target.
+    g_lo = _eval(lo, "bracket_lo")["achieved_resilience"] - baseline_resilience
+    g_hi = _eval(hi, "bracket_hi")["achieved_resilience"] - baseline_resilience
+    if not gain_brackets_target(g_lo, g_hi, TARGET_GAIN):
+        print(f"  [warn] bracket [{lo:.4f},{hi:.4f}] gains ({g_lo:.4f},{g_hi:.4f}) do not "
+              f"straddle target {TARGET_GAIN}; widening to [0, 0.99]")
+        lo, hi = 0.0, 0.99
+        g_lo = _eval(lo, "bracket_lo_wide")["achieved_resilience"] - baseline_resilience
+        g_hi = _eval(hi, "bracket_hi_wide")["achieved_resilience"] - baseline_resilience
+        if not gain_brackets_target(g_lo, g_hi, TARGET_GAIN):
+            raise RuntimeError(
+                f"target gain {TARGET_GAIN} not bracketed on [0, 0.99] for ty={ty} "
+                f"(gain(0)={g_lo:.4f}, gain(0.99)={g_hi:.4f})"
+            )
 
     achieved_resilience = np.nan
     achieved_gain = np.nan
