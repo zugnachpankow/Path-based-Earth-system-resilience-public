@@ -107,8 +107,11 @@ df_to_clean["unit"] = df_to_clean["unit"].astype(str).apply(rename_unit)
 
 # historical period from RCMIP (scenario "historical", annual up to 2014.5), so NGFS
 # shares the exact same history as the SSP study (SSP/study.py, via fill_from_rcmip_locally).
-# RCMIP historical ends at 2014.5; NGFS futures start at 2020.5, and the 2015-2019 gap is
-# filled by the downstream annual interpolation (2_build) / FAIR ingestion.
+# RCMIP historical ends at 2014.5; NGFS futures start at 2020.5. The 2015-2019 gap is left
+# empty here and filled by a LINEAR bridge at FAIR ingestion: fill_from_csv ->
+# fill_from_pandas interpolates the sparse CSV years onto FAIR's annual timepoints with
+# scipy interp1d (linear), i.e. a straight line from the 2014.5 RCMIP value to the 2020.5
+# NGFS value (STEP 8b: keep the linear bridge).
 df1 = clean_rcmip_historical_for_fair(species=fair_variables["variable"].tolist())
 df2 = df_to_clean
 
