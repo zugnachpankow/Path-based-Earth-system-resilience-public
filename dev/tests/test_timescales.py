@@ -7,10 +7,28 @@ time constant must be T=tau/I_CAL. These tests check the conversion, the old (un
 """
 import os, sys
 import numpy as np
-import pytest
 from scipy.integrate import solve_ivp
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "src"))
+try:
+    import pytest
+except ModuleNotFoundError:
+    # standalone shim: keep @pytest.mark.parametrize usable (and the functions
+    # directly callable) without a pytest dependency; the __main__ runner below
+    # expands the parametrised cases.
+    class _Mark:
+        @staticmethod
+        def parametrize(argnames, argvalues):
+            def deco(fn):
+                fn._params = (argnames, argvalues)
+                return fn
+            return deco
+
+    class _Pytest:
+        mark = _Mark()
+
+    pytest = _Pytest()
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "src"))
 from tipping import Earth_System, I_CAL, ode_timescale
 from tipping_params import param_bounds, pf_bounds, sample_lhs_params
 
@@ -67,3 +85,26 @@ def test_4_uniform_clock():
         f_cur = np.asarray(net_cur.f(x, 2100.0)); f_fix = np.asarray(net_fix.f(x, 2100.0))
         assert np.allclose(f_fix, I_CAL * f_cur, rtol=1e-12, atol=0.0), \
             f"f_fixed != I_CAL*f_current: {f_fix} vs {I_CAL*f_cur}"
+
+
+if __name__ == "__main__":
+    _fns = [test_1_I_CAL, test_2_fixed_crossing_equals_tau,
+            test_3_current_ratio_is_I_CAL, test_4_uniform_clock]
+    _failed = 0
+    for _fn in _fns:
+        _params = getattr(_fn, "_params", None)
+        if _params:
+            _names = [a.strip() for a in _params[0].split(",")]
+            _cases = [dict(zip(_names, _vals)) for _vals in _params[1]]
+        else:
+            _cases = [{}]
+        for _case in _cases:
+            _label = _fn.__name__ + (f"[{','.join(map(str, _case.values()))}]" if _case else "")
+            try:
+                _fn(**_case)
+                print(f"PASS {_label}")
+            except Exception as e:
+                _failed += 1
+                print(f"FAIL {_label}: {type(e).__name__}: {e}")
+    print("\n" + ("all test groups passed" if not _failed else f"{_failed} failed"))
+    sys.exit(1 if _failed else 0)

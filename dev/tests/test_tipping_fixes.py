@@ -3,7 +3,7 @@ import os, sys, copy
 import numpy as np
 from pyDOE import lhs
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "src"))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "src"))
 from tipping import Earth_System
 from tipping_params import param_bounds, pf_bounds, all_bounds, sample_lhs_params, SEED
 

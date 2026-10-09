@@ -43,6 +43,42 @@ def build_species_map(species):
     return {specie: name for specie, name in m.items() if specie in species}
 
 
+# RCMIP reports the NOx biomass-burning (GFED) sectors in Mt NO, but labels every
+# NOx series "Mt NOx/yr" and fair expects Mt NO2/yr. The aggregate Emissions|NOx
+# therefore under-counts biomass burning (~12.7 vs 19.4 Mt at 1750). Reconstruct
+# the total as fair-calibrate v1.4.0 does (08_make-ssp-emissions-binary.py):
+# convert the four GFED sectors by the NO2/NO molar-mass ratio and add the
+# Agriculture and Fossil & Industrial sectors (already NO2).
+_NOX_GFED_SECTORS = [
+    "Emissions|NOx|MAGICC AFOLU|Agricultural Waste Burning",
+    "Emissions|NOx|MAGICC AFOLU|Forest Burning",
+    "Emissions|NOx|MAGICC AFOLU|Grassland Burning",
+    "Emissions|NOx|MAGICC AFOLU|Peat Burning",
+]
+_NOX_AGRICULTURE = "Emissions|NOx|MAGICC AFOLU|Agriculture"
+_NOX_FOSSIL_INDUSTRIAL = "Emissions|NOx|MAGICC Fossil and Industrial"
+_NOX_NO2_PER_NO = 46.006 / 30.006
+
+
+def reconstruct_nox_emissions(df_emis, scenario, region, year_cols):
+    """Total NOx (Mt NO2/yr) over ``year_cols``, GFED sectors NO->NO2 corrected.
+
+    Verbatim port of the fair-calibrate v1.4.0 NOx fix: the four GFED
+    biomass-burning sectors are summed and scaled by 46.006/30.006, then the
+    Agriculture and Fossil & Industrial sectors are added. ``year_cols`` is the
+    ordered list of year column labels to return.
+    """
+    m = (df_emis["Scenario"] == scenario) & (df_emis["Region"] == region)
+
+    def _rows(var_mask):
+        return df_emis.loc[m & var_mask, year_cols].interpolate(axis=1).values
+
+    gfed = _rows(df_emis["Variable"].isin(_NOX_GFED_SECTORS)).sum(axis=0) * _NOX_NO2_PER_NO
+    agriculture = _rows(df_emis["Variable"] == _NOX_AGRICULTURE).squeeze()
+    fossil = _rows(df_emis["Variable"] == _NOX_FOSSIL_INDUSTRIAL).squeeze()
+    return gfed + agriculture + fossil
+
+
 def clean_rcmip_historical_for_fair(
     species,
     emissions_file=RCMIP_EMISSIONS,
@@ -91,8 +127,12 @@ def clean_rcmip_historical_for_fair(
             )
 
         # grab raw historical emissions; interpolate fills any interior gap but
-        # does not extrapolate beyond the observed range.
-        emis_in = df_emis.loc[mask, hist_years].interpolate(axis=1).values.squeeze()
+        # does not extrapolate beyond the observed range. NOx is reconstructed
+        # from its sectors (the aggregate RCMIP series mis-scales biomass burning).
+        if specie == "NOx":
+            emis_in = reconstruct_nox_emissions(df_emis, scenario, region, hist_years)
+        else:
+            emis_in = df_emis.loc[mask, hist_years].interpolate(axis=1).values.squeeze()
 
         # parse unit from input file (kept as-is; 1_clean harmonises vs NGFS)
         unit = df_emis.loc[mask, "Unit"].values[0]
@@ -126,17 +166,26 @@ def fill_from_rcmip_locally(
     for scenario in fair_instance.scenarios:
         for specie, specie_rcmip_name in species_to_rcmip.items():
             if fair_instance.properties_df.loc[specie, "input_mode"] == "emissions":
-                # grab raw emissions from dataframe
-                emis_in = (
-                    df_emis.loc[
-                        (df_emis["Scenario"] == scenario)
-                        & (df_emis["Variable"].str.endswith("|" + specie_rcmip_name))
-                        & (df_emis["Region"] == "World"),
-                        "1750":"2500",
+                # grab raw emissions from dataframe. NOx is reconstructed from its
+                # sectors (the aggregate RCMIP series mis-scales biomass burning);
+                # every other specie reads its single aggregate series.
+                if specie == "NOx":
+                    year_cols = [
+                        c for c in df_emis.columns
+                        if str(c).isdigit() and 1750 <= int(c) <= 2500
                     ]
-                    .interpolate(axis=1)
-                    .values.squeeze()
-                )
+                    emis_in = reconstruct_nox_emissions(df_emis, scenario, "World", year_cols)
+                else:
+                    emis_in = (
+                        df_emis.loc[
+                            (df_emis["Scenario"] == scenario)
+                            & (df_emis["Variable"].str.endswith("|" + specie_rcmip_name))
+                            & (df_emis["Region"] == "World"),
+                            "1750":"2500",
+                        ]
+                        .interpolate(axis=1)
+                        .values.squeeze()
+                    )
 
                 # throw error if data missing
                 if emis_in.shape[0] == 0:
