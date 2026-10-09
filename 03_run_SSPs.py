@@ -10,8 +10,8 @@ from monte_carlo_runner import monte_carlo_fair, aggregate_runs
 
 # SSP emissions/forcing come from RCMIP inside the runner (fill_from_rcmip_locally),
 # so only the calibrated params + species configs are passed here.
-fair_params_file = "data/raw/calibrated_constrained_parameters_calibration1.4.1.csv"
-fair_species_configs_file = "data/raw/species_configs_properties_calibration1.4.1.csv"
+fair_params_file = "data/raw/calibrated_constrained_parameters_calibration1.4.0.csv"
+fair_species_configs_file = "data/raw/species_configs_properties_calibration1.4.0.csv"
 time = np.arange(1750, 2300, 1)
 
 scenarios = ['ssp119', 'ssp126', 'ssp245', 'ssp370', 'ssp434', 'ssp460', 'ssp534-over', 'ssp585']

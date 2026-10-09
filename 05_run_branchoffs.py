@@ -10,8 +10,8 @@ sys.path.insert(0, os.path.join(_HERE, "src"))
 os.chdir(_HERE)  # resolve data/ and output/ from the repo root, not the job's cwd
 from monte_carlo_runner import monte_carlo_fair, aggregate_runs
 
-fair_params_file = "data/raw/calibrated_constrained_parameters_calibration1.4.1.csv"
-fair_species_configs_file = "data/raw/species_configs_properties_NGFS.csv"
+fair_params_file = "data/raw/calibrated_constrained_parameters_calibration1.4.0.csv"
+fair_species_configs_file = "data/raw/species_configs_properties_NGFS_calibration1.4.0.csv"
 emissions_file = "data/processed/current_policy_branch_offs_2300.csv"
 forcing_file = "data/processed/current_policy_branch_offs_2300_forcing.csv"
 time = np.arange(1750, 2301, 1)
