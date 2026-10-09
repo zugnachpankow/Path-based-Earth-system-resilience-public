@@ -15,7 +15,7 @@ import tempfile
 import numpy as np
 import pandas as pd
 
-REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.join(REPO, "src"))
 DATA_RAW = os.path.join(REPO, "data", "raw")
 
@@ -25,8 +25,9 @@ SPECIES_NGFS = os.path.join(DATA_RAW, "species_configs_properties_NGFS_calibrati
 SRC_PARAMS = os.path.join(DATA_RAW, "calibrated_constrained_parameters.csv")
 SPECIES_141 = os.path.join(DATA_RAW, "species_configs_properties_calibration1.4.1.csv")
 
-# RCMIP lives in the ERI-cleaned working copy (excluded from the public repo).
-ERI_RAW = "/home/maxbecht/ERI-cleaned/data/raw"
+# RCMIP source files are excluded from the public repo; set ERI_DATA_RAW to a dir
+# that contains them (defaults to this repo's data/raw). Tests skip if missing.
+ERI_RAW = os.environ.get("ERI_DATA_RAW", DATA_RAW)
 
 
 def test_params_shape_index_nonan():

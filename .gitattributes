@@ -1,0 +1,4 @@
+# Development-only material (standalone tests, scratch analysis) is kept in the
+# repository but excluded from release archives produced by `git archive`.
+dev/ export-ignore
+.gitattributes export-ignore

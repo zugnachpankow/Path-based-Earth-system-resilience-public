@@ -14,6 +14,7 @@ from scipy.interpolate import interp1d
 from tqdm import tqdm, trange
 
 from monte_carlo_runner import monte_carlo_fair
+from fair_config import load_fair_params
 from tipping import compute_tip_prob
 from tipping_params import sample_lhs_params
 
@@ -411,7 +412,7 @@ def compute_fragility_masks(configs, params_file, n_terciles=3):
     [iirf_uptake[CO2], ocean_heat_transfer[0], deep_ocean_efficacy] (climate-model
     component only; no tipping).
     """
-    df_configs = pd.read_csv(params_file, index_col=0)
+    df_configs, _ = load_fair_params(params_file)
     param_cols = ["iirf_uptake[CO2]", "ocean_heat_transfer[0]", "deep_ocean_efficacy"]
     df_sub     = df_configs.loc[configs, param_cols].copy()
 

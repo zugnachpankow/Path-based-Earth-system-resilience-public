@@ -1,7 +1,6 @@
 import os
 import copy
 
-import pandas as pd
 import xarray as xr
 from tqdm import trange
 
@@ -10,6 +9,12 @@ from fair.interface import fill, initialise
 from fair.io import read_properties
 
 from rcmip import fill_from_rcmip_locally
+from fair_config import (
+    load_fair_params,
+    fair_override_file,
+    natural_forcing,
+    solar_trend_shape,
+)
 
 
 def monte_carlo_fair(
@@ -62,8 +67,10 @@ def monte_carlo_fair(
     f.define_time(time[0], time[-1], 1)  # start, end, step
     f.define_scenarios(scenarios)
     fair_params_file = params_file
-    df_configs = pd.read_csv(fair_params_file, index_col=0)
-    configs = df_configs.index
+    # df_fair holds only fair config columns (override_defaults-safe); solar holds
+    # the per-config solar amplitude/trend used to build the Solar forcing below.
+    df_fair, solar = load_fair_params(fair_params_file)
+    configs = df_fair.index
     f.define_configs(configs)
     fair_species_configs_file = species_configs_file
     species, properties = read_properties(filename=fair_species_configs_file)
@@ -82,19 +89,37 @@ def monte_carlo_fair(
             )
     else:
         fill_from_rcmip_locally(f)
-    f.forcing.sel(specie="Volcanic")
+    # Natural forcing from the fair-calibrate v1.4.0 files, identical for every
+    # scenario family and scaled per config (reference 05 script). This replaces
+    # whatever Solar/Volcanic forcing the emissions/forcing source provided, so
+    # all families share the same natural forcing. forcing_scale has no effect on
+    # prescribed-forcing species in FAIR, so the pre-scaling here is the only
+    # scaling that applies.
+    volcanic, solar_erf = natural_forcing(f.timebounds)
+    trend = solar_trend_shape(f.timebounds)
     fill(
         f.forcing,
-        f.forcing.sel(specie="Volcanic") * df_configs["forcing_scale[Volcanic]"].values.squeeze(),
+        volcanic[:, None, None] * df_fair["forcing_scale[Volcanic]"].values.squeeze(),
         specie="Volcanic",
     )
-    fill(
-        f.forcing,
-        f.forcing.sel(specie="Solar") * df_configs["forcing_scale[Solar]"].values.squeeze(),
-        specie="Solar",
-    )
+    if solar is not None:
+        fill(
+            f.forcing,
+            solar_erf[:, None, None] * solar["fscale_solar_amplitude"].values.squeeze()
+            + trend[:, None, None] * solar["fscale_solar_trend"].values.squeeze(),
+            specie="Solar",
+        )
+    else:
+        # legacy calibrations (e.g. 1.4.1) fold the solar amplitude into
+        # forcing_scale[Solar] and have no trend term.
+        fill(
+            f.forcing,
+            solar_erf[:, None, None] * df_fair["forcing_scale[Solar]"].values.squeeze(),
+            specie="Solar",
+        )
     f.fill_species_configs(fair_species_configs_file)
-    f.override_defaults(fair_params_file)
+    with fair_override_file(df_fair) as override_file:
+        f.override_defaults(override_file)
     initialise(f.concentration, f.species_configs["baseline_concentration"])
     initialise(f.forcing, 0)
     initialise(f.temperature, 0)
