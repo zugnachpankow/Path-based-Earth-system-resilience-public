@@ -6,7 +6,7 @@ Ported from ERI/plots/results_nature/calculator_combined.py.
   (b) emission trajectories — NDC baseline vs +1% and +10% candidates at 2035.5.
   (c) GFP-percentile line — required NDC reduction vs Earth-system fragility.
 
-Consumes the cleaned pipeline's calculator outputs (13 confirmator + 16 GFP-pct).
+Consumes the cleaned pipeline's calculator outputs (14 confirmator + 13 GFP-percentile).
 Light — reads a few CSVs; can run on the login node.
 """
 import os
@@ -27,7 +27,8 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(_HERE, "src"))
 os.chdir(_HERE)
 
-from figures_common import apply_style, TWO_COL, FIG_DIR, res_x, res_y, rate, rate_str, FAIR_PARAMS_FILE
+from figures_common import (apply_style, TWO_COL, FIG_DIR, res_x, res_y, rate, rate_str,
+                            FAIR_PARAMS_FILE, time_to_net_zero_yr)
 
 apply_style()
 
@@ -57,10 +58,15 @@ SUMMARY_CSV = (
 )
 RESULTS_1PCT   = "output/calculator/confirmator/confirmed_results_gain0.01.csv"
 RESULTS_10PCT  = "output/calculator/confirmator/confirmed_results_gain0.1.csv"
-# prefer the confirmed GFP-percentile (14 gfp mode); fall back to the finder (13)
+# require the CONFIRMED GFP-percentile (14 gfp mode); never silently fall back to the
+# unconfirmed finder (13) output, which would mix confirmed and unconfirmed numbers.
 _GFP_CONFIRMED = "output/calculator/confirmator/confirmed_gfp_percentile.csv"
-_GFP_FINDER    = "output/calculator/gfp_percentile/gfp_percentile_results.csv"
-GFP_PCT_CSV    = _GFP_CONFIRMED if os.path.exists(_GFP_CONFIRMED) else _GFP_FINDER
+if not os.path.exists(_GFP_CONFIRMED):
+    raise FileNotFoundError(
+        f"Confirmed GFP-percentile file missing: {_GFP_CONFIRMED} (run 14 in gfp mode). "
+        "Refusing to fall back to the unconfirmed finder output."
+    )
+GFP_PCT_CSV    = _GFP_CONFIRMED
 EMISSIONS_FILE = "data/processed/NGFS_historic_merged_extended_to_2110.csv"
 NDC_SCENARIO   = "REMIND-MAgPIE_3.3-4.8___Nationally_Determined_Contributions_(NDCs)"
 REDUCTION_COL  = "reduction_frac"   # confirmator column (== finder's converged_reduction_frac)
@@ -125,18 +131,31 @@ def _co2_total(df_em, scenario, year_cols, region="World"):
 
 def _build_candidate_co2(df_em, years_arr, year_cols, base_scen, target_year,
                          reduction_frac, region="World"):
+    """CO2 (FFI+AFOLU) of the candidate ACTUALLY simulated by the calculator.
+
+    Mirrors calculator.build_candidate_scenario (ramped absolute offset subtracted
+    from the base, then ``min(base, max(reduced, floor))``) applied PER species and
+    summed -- not the old straight-line ramp on the CO2 total clipped at 0. The CO2
+    natural-background floor is 0, so net-negative AFOLU is held, never raised.
+    (Reimplemented inline to avoid importing the heavy calculator/pycascades stack
+    into this light figure script.)
+    """
     ramp_start = 2025.5
-    i_base   = int(np.argmin(np.abs(years_arr - ramp_start)))
-    i_target = int(np.argmin(np.abs(years_arr - target_year)))
-    base = _co2_total(df_em, base_scen, year_cols, region)
-    cand = base.copy()
-    v_base       = cand[i_base]
-    v_target_old = cand[i_target]
-    v_target_new = v_target_old * (1.0 - reduction_frac)
+    i_target  = int(np.argmin(np.abs(years_arr - target_year)))
     ramp_mask = (years_arr >= ramp_start) & (years_arr <= target_year)
-    cand[ramp_mask] = np.linspace(v_base, v_target_new, int(ramp_mask.sum()))
-    cand[years_arr > target_year] -= np.abs(v_target_old - v_target_new)
-    return np.maximum(cand, 0.0)
+    total = np.zeros(len(years_arr))
+    for var in ("CO2 FFI", "CO2 AFOLU"):
+        m = ((df_em["scenario"] == base_scen) & (df_em["region"] == region) &
+             (df_em["variable"] == var))
+        if not m.any():
+            continue
+        base = df_em.loc[m, year_cols].values.astype(float).ravel()
+        difference = base[i_target] * reduction_frac
+        offset = np.zeros(len(years_arr))
+        offset[ramp_mask] = np.linspace(0.0, difference, int(ramp_mask.sum()))
+        offset[years_arr > target_year] = difference
+        total += np.minimum(base, np.maximum(base - offset, 0.0))  # floor = 0 for CO2
+    return total / 1000.0  # Mt CO2/yr -> Gt CO2/yr
 
 
 def _write_ambition_stats(res_by_start, res_by_rate):
@@ -239,7 +258,7 @@ def plot_calculator_combined(output_stem):
     ax_left.legend(loc="upper left", frameon=False)
     ax_left.text(0.0, 1.02, "a", transform=ax_left.transAxes, fontsize=8,
                  fontweight="bold", va="bottom", ha="left", clip_on=False)
-    ax_left.text(0.0, 1.02, "Resilience gain with\ncurrent-policies baseline",
+    ax_left.text(0.0, 1.02, "Path-based resilience\ncurrent-policies baseline",
                  transform=ax_left.transAxes + _lbl_off, fontsize=6, fontstyle="italic",
                  va="bottom", ha="left", color="#444444", clip_on=False)
 
@@ -251,7 +270,7 @@ def plot_calculator_combined(output_stem):
     # second x-axis (top of heatmap): time to net-zero CO2 = 1/rate [yr] (rate_pct/100)
     ax_top = ax_heat.twiny()
     ax_top.set_xlim(ax_heat.get_xlim()); ax_top.set_xticks(x_pos)
-    ax_top.set_xticklabels([f"{100.0 / xr:.0f}" for xr in x_labels])
+    ax_top.set_xticklabels([f"{time_to_net_zero_yr(xr)}" for xr in x_labels])
     ax_top.set_xlabel("Time to net-zero [yr]")
     ax_bottom.grid(True, alpha=0.3); ax_bottom.legend(loc="upper left", frameon=False)
     # ax_bottom shares x with the heatmap, so setting its tick labels above re-enabled
@@ -268,14 +287,16 @@ def plot_calculator_combined(output_stem):
     ax_b.scatter(2035, cand10_at, color=traj_cols["T2035_10"], s=12, zorder=4)
     # annotations: all-emissions cut % (CO2 part) in 2035 vs. NDC, then the confirmed gain + 95% CI
     co2_cut = float(r2035_row["co2_GtCO2"]) / 1000.0
-    _b1  = float(r2035_row["baseline_resilience"]); _g1 = float(r2035_row["achieved_gain"]) * 100
-    _lo1 = (float(r2035_row["ci_low"]) - _b1) * 100; _hi1 = (float(r2035_row["ci_high"]) - _b1) * 100
+    # ci_low/ci_high are now the PAIRED GAIN CI (confirmator resamples the difference
+    # tensor), so they are the gain CI directly -- no baseline subtraction.
+    _g1 = float(r2035_row["achieved_gain"]) * 100
+    _lo1 = float(r2035_row["ci_low"]) * 100; _hi1 = float(r2035_row["ci_high"]) * 100
     ax_b.text(2034.5, cand_at,
               f"−{R_2035*100:.0f}% (−{co2_cut:.1f} GtCO₂) in 2035 vs. NDC\nfor +{_g1:.1f} %pt [{_lo1:.1f}–{_hi1:.1f}]",
               va="top", ha="right", fontsize=5.5, color=traj_cols["T2035_1"], linespacing=1.3)
     co2_cut_10 = float(r2035_10_row["co2_GtCO2"]) / 1000.0
-    _b10  = float(r2035_10_row["baseline_resilience"]); _g10 = float(r2035_10_row["achieved_gain"]) * 100
-    _lo10 = (float(r2035_10_row["ci_low"]) - _b10) * 100; _hi10 = (float(r2035_10_row["ci_high"]) - _b10) * 100
+    _g10 = float(r2035_10_row["achieved_gain"]) * 100
+    _lo10 = float(r2035_10_row["ci_low"]) * 100; _hi10 = float(r2035_10_row["ci_high"]) * 100
     ax_b.text(2034.5, cand10_at,
               f"−{R_2035_10*100:.0f}% (−{co2_cut_10:.1f} GtCO₂) in 2035 vs. NDC\nfor +{_g10:.1f} %pt [{_lo10:.1f}–{_hi10:.1f}]",
               va="top", ha="right", fontsize=5.5, color=traj_cols["T2035_10"], linespacing=1.3)
@@ -299,8 +320,15 @@ def plot_calculator_combined(output_stem):
     ax_c.set_xlabel("Climate–carbon feedback strength\n(Generalised feedback parameter percentile)")
     ax_c.set_ylabel("Cut below NDC baseline in 2035 [%]")
     ax_c.set_ylim(0, 80); ax_c.legend(frameon=False, loc="upper left"); ax_c.grid(True, alpha=0.3)
-    # second axis: absolute CO2 cut at 2035 (= reduction_frac x NDC CO2 at 2035.5, deterministic)
-    _ndc2035 = float(_co2_total(df_em, NDC_SCENARIO, ["2035.5"])[0])   # GtCO2 (NDC FFI+AFOLU at 2035.5)
+    # second axis: absolute CO2 cut at 2035. The cut is R x the REDUCIBLE CO2, i.e. the
+    # species with POSITIVE emissions at 2035.5; net-negative CO2 AFOLU is held (not
+    # reduced), so cut = R x total only when both FFI and AFOLU are positive.
+    _co2_2035 = {}
+    for _v in ("CO2 FFI", "CO2 AFOLU"):
+        _m = ((df_em["scenario"] == NDC_SCENARIO) & (df_em["region"] == "World") &
+              (df_em["variable"] == _v))
+        _co2_2035[_v] = float(df_em.loc[_m, "2035.5"].sum()) / 1000.0 if _m.any() else 0.0
+    _ndc2035 = sum(v for v in _co2_2035.values() if v > 0)   # GtCO2, reducible only
     _secax = ax_c.secondary_yaxis("right", functions=(lambda p: p / 100.0 * _ndc2035,
                                                       lambda g: g / _ndc2035 * 100.0))
     _secax.set_ylabel("CO₂ cut in 2035 [GtCO₂ yr⁻¹]")

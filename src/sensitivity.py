@@ -39,15 +39,18 @@ def resilience_index(rm, res_x, res_y, rate, tipping_switch, tip_prob):
     if tipping_switch > 0.5:
         res_s = binary_resilient.set_index(member=["config", "run"]).unstack("member")
         resilience = res_s.astype(float) * (1 - tip_prob)  # incorporate tipping probability
-        resilience_val = resilience.sum().item() / resilience.size
+        # NaN-aware mean: failed tipping solves are NaN (no fillna(0)); xarray .mean
+        # skips them so one failure never drags the whole index to 0.
+        resilience_val = float(resilience.mean())
     else:
-        resilience_val = binary_resilient.sum().item() / binary_resilient.size
+        resilience_val = float(binary_resilient.mean())
 
     return resilience_val
 
 
 def run_sobol_mc(rm, tip_prob, save_path, sc, N=1024, N_mc=10000):
-    tip_prob_sc = tip_prob.fillna(0.0)
+    tip_prob_sc = tip_prob   # no fillna(0): NaN tipping solves stay NaN and are
+    # dropped by the NaN-aware averaging in resilience_index (STEP 6)
     sobol_path  = save_path + f"sobol_{sc}.pkl"
     mc_path     = save_path + f"mc_{sc}.pkl"
 
@@ -58,12 +61,13 @@ def run_sobol_mc(rm, tip_prob, save_path, sc, N=1024, N_mc=10000):
         param_values, Y, Si = d['param_values'], d['Y'], d['Si']
     else:
         print(f"Computing Sobol for {sc} …")
-        param_values = saltelli.sample(problem, N, calc_second_order=True, seed=SEED)
+        # SALib 1.5.2 saltelli.sample has no `seed` kwarg (and is deterministic anyway)
+        param_values = saltelli.sample(problem, N, calc_second_order=True)
         Y = np.array([
             resilience_index(rm, int(p[0]), p[1], p[2], p[3], tip_prob_sc)
             for p in tqdm(param_values, desc=f"Sobol {sc}")
         ])
-        Si = sobol.analyze(problem, Y, calc_second_order=True, print_to_console=True)
+        Si = sobol.analyze(problem, Y, calc_second_order=True, seed=SEED, print_to_console=True)
         with open(sobol_path, "wb") as f:
             pickle.dump({'param_values': param_values, 'Y': Y, 'Si': Si}, f)
 

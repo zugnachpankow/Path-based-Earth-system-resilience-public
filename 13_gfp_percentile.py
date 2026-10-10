@@ -1,4 +1,4 @@
-"""16_gfp_percentile.py — required NDC reduction vs Earth-system fragility (GFP).
+"""13_gfp_percentile.py — required NDC reduction vs Earth-system fragility (GFP).
 
 Ported from ERI/code/improved_X%_calculator/gfp_percentile_bisection.py.
 
@@ -27,10 +27,12 @@ sys.path.insert(0, os.path.join(_HERE, "src"))
 os.chdir(_HERE)
 
 from calculator import (
-    evaluate_candidate, compute_fragility_masks,
+    evaluate_candidate, compute_fragility_masks, assert_configs_match_ensemble,
+    gain_brackets_target,
     N_FAIR_RUNS_BISECT, N_TIPPING_SAMPLES_BISECT, N_TIPPING_SAMPLES_FINAL,
 )
 from tipping_params import sample_lhs_params
+from fair_config import FAIR_PARAMS, SPECIES_CONFIGS_NGFS
 
 # ── configuration ───────────────────────────────────────────────────────────────
 TARGET_YEAR   = 2035.5
@@ -46,8 +48,8 @@ BASE_SCENARIO_CLEAN = BASE_SCENARIO.replace("(", "").replace(")", "")
 
 EMISSIONS_FILE = "data/processed/NGFS_historic_merged_extended_to_2110.csv"
 FORCING_FILE   = "data/processed/NGFS_forcing.csv"
-PARAMS_FILE    = "data/raw/calibrated_constrained_parameters_calibration1.4.1.csv"
-SPECIES_FILE   = "data/raw/species_configs_properties_NGFS.csv"
+PARAMS_FILE    = FAIR_PARAMS            # single calibration (v1.4.0) via src/fair_config
+SPECIES_FILE   = SPECIES_CONFIGS_NGFS
 WORKSPACE      = "output/calculator/gfp_percentile"
 
 # single-stage bisection (no cap)
@@ -90,6 +92,7 @@ df_forcing = pd.read_csv(FORCING_FILE)
 
 df_configs = pd.read_csv(PARAMS_FILE, index_col=0)
 all_configs = df_configs.index.tolist()
+assert_configs_match_ensemble()   # params file must match the ensemble's config set
 _, gf_scores = compute_fragility_masks(all_configs, PARAMS_FILE)
 print(f"GFP scores for {len(gf_scores)} configs (range [{gf_scores.min():.3f}, {gf_scores.max():.3f}])", flush=True)
 
@@ -107,21 +110,40 @@ else:
 
 def _bisect_subset(cfg_subset, gain, tag, lo, hi):
     """Single-stage bisection of the reduction over a config subset, given a bracket."""
-    res = None
-    for it in range(MAX_ITER):
-        mid = 0.5 * (lo + hi)
-        iter_dir = os.path.join(WORKSPACE, tag, f"iter_{it:02d}")
-        res = evaluate_candidate(
-            mid, df_emissions, years, year_cols,
+    def _eval(R, label):
+        iter_dir = os.path.join(WORKSPACE, tag, label)
+        return evaluate_candidate(
+            R, df_emissions, years, year_cols,
             BASE_SCENARIO, TARGET_YEAR, df_forcing,
             PARAMS_FILE, SPECIES_FILE, iter_dir,
             n_runs=N_RUNS, n_samples=N_SAMPLES,
             temp_threshold=TEMP_THRESHOLD, rate_threshold=RATE_THRESHOLD,
             year_target=YEAR_TARGET, config_subset=cfg_subset,
             lhs_params=lhs_params, extend=False,
-            candidate_name=f"NDC_calc__{tag}_r{mid:.6f}",
+            candidate_name=f"NDC_calc__{tag}_r{R:.6f}",
         )
-        gain_now = res["achieved_resilience"] - baseline_resilience
+
+    # bracket-sign check (ported from 12): the monotone gain(R) must straddle the
+    # target gain across [lo, hi]; else widen to [0, 0.99]; else raise.
+    g_lo = _eval(lo, "bracket_lo")["achieved_gain"]
+    g_hi = _eval(hi, "bracket_hi")["achieved_gain"]
+    if not gain_brackets_target(g_lo, g_hi, gain):
+        print(f"    [warn] bracket [{lo:.4f},{hi:.4f}] gains ({g_lo:.4f},{g_hi:.4f}) do not "
+              f"straddle target {gain}; widening to [0, 0.99]", flush=True)
+        lo, hi = 0.0, 0.99
+        g_lo = _eval(lo, "bracket_lo_wide")["achieved_gain"]
+        g_hi = _eval(hi, "bracket_hi_wide")["achieved_gain"]
+        if not gain_brackets_target(g_lo, g_hi, gain):
+            raise RuntimeError(
+                f"target gain {gain} not bracketed on [0, 0.99] for {tag} "
+                f"(gain(0)={g_lo:.4f}, gain(0.99)={g_hi:.4f})"
+            )
+
+    res = None
+    for it in range(MAX_ITER):
+        mid = 0.5 * (lo + hi)
+        res = _eval(mid, f"iter_{it:02d}")
+        gain_now = res["achieved_gain"]   # paired candidate - NDC from the same run
         if gain_now < gain:
             lo = mid
         else:
@@ -129,7 +151,10 @@ def _bisect_subset(cfg_subset, gain, tag, lo, hi):
         print(f"    iter {it:02d}: R={mid:.4f} gain={gain_now:.5f} [lo={lo:.4f}, hi={hi:.4f}]", flush=True)
         if hi - lo < TOL:
             break
-    return 0.5 * (lo + hi), res
+
+    converged = 0.5 * (lo + hi)
+    res = _eval(converged, "converged")   # report at the converged R, not the last step
+    return converged, res
 
 
 # ── main loop ─────────────────────────────────────────────────────────────────────
@@ -158,7 +183,8 @@ for pct in PERCENTILES:
             "n_configs": len(cfg_subset),
             "gain_target": gain,
             "reduction_frac": red,
-            "achieved_gain": (res["achieved_resilience"] - baseline_resilience) if res else np.nan,
+            "achieved_gain": res["achieved_gain"] if res else np.nan,       # paired
+            "ndc_resilience": res["ndc_resilience"] if res else np.nan,     # cross-check
             "co2_GtCO2": res["co2_GtCO2"] if res else np.nan,
         })
         done.add((pct, gain))

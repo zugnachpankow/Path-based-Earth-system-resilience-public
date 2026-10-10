@@ -60,3 +60,19 @@ if __name__ == "__main__":
     out_dir = OUTPUT / "tipping"
     out_dir.mkdir(parents=True, exist_ok=True)
     ds_prob.to_netcdf(str(out_dir / f"{scenario}_tipping_probabilities.nc"))
+
+    # solver diagnostics: failed ODE solves -> NaN (never silently absorbed). Report
+    # the counts per scenario and append them to output/tipping/solver_report.csv, which
+    # 09 reads and refuses to proceed on if any n_solver_failures > 0.
+    import csv
+    n_fail = int(prob_any.attrs.get("n_solver_failures", 0))
+    n_disagree = int(prob_any.attrs.get("n_tip_final_disagreements", 0))
+    print(f"  solver: n_solver_failures={n_fail}  n_tip_final_disagreements={n_disagree}",
+          flush=True)
+    report = out_dir / "solver_report.csv"
+    write_header = not report.exists()
+    with open(report, "a", newline="") as fh:
+        w = csv.writer(fh)
+        if write_header:
+            w.writerow(["scenario", "n_solver_failures", "n_tip_final_disagreements"])
+        w.writerow([scenario, n_fail, n_disagree])

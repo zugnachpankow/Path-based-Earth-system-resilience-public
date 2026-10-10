@@ -49,6 +49,7 @@ from figures_common import (
     load_tipping, load_df_params,
 )
 from tipping_params import all_bounds, sample_lhs_params
+from pca_orient import orient_by_correlation
 
 HEATMAP_DIR = os.path.join(FIG_DIR, "heatmaps")
 os.makedirs(HEATMAP_DIR, exist_ok=True)
@@ -73,7 +74,14 @@ scaler_tr = StandardScaler()
 X_tr_scaled = scaler_tr.fit_transform(df_lhs[tipping_columns])
 pca_tr = PCA(n_components=1)
 tipping_susc_pc = pca_tr.fit_transform(X_tr_scaled).flatten()
-tipping_susc_pc = -tipping_susc_pc
+# orient so tipping susceptibility correlates positively with the mean tipping
+# probability per LHS sample (averaged over scenarios/config/run), deterministically
+_tip_per_sample = np.nanmean(
+    [tipping_sample_dict[sc]['prob_any_tipping_sample'].mean(dim=['config', 'run']).values
+     for sc in sorted(tipping_sample_dict)],
+    axis=0,
+)
+tipping_susc_pc = orient_by_correlation(tipping_susc_pc, _tip_per_sample)
 tipping_susc_scaled = (tipping_susc_pc - tipping_susc_pc.min()) / (tipping_susc_pc.max() - tipping_susc_pc.min())
 df_lhs["tipping_susc"] = tipping_susc_scaled
 df_lhs_with_sample = df_lhs.reset_index().rename(columns={'index': 'sample'})

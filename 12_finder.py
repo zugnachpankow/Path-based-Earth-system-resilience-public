@@ -2,7 +2,7 @@
 
 Simplified single-stage bisection (drops the old calculator's Stage1/Stage2 split
 and multiple epsilons). Seeded from the previously converged reduction fractions so
-it only has to refine, at reduced resolution: 1 deterministic FAIR run + 100 tipping
+it only has to refine, at reduced resolution: 10 stochastic FAIR runs + 100 tipping
 samples per evaluation. The canonical NDC baseline resilience is read from the 09
 resilience summary, so the gain is defined identically to the main pipeline.
 
@@ -23,11 +23,13 @@ os.chdir(_HERE)  # resolve data/ and output/ from the repo root, not the job's c
 from calculator import (
     evaluate_candidate,
     gain_brackets_target,
+    assert_configs_match_ensemble,
     N_FAIR_RUNS_BISECT,
     N_TIPPING_SAMPLES_BISECT,
     N_TIPPING_SAMPLES_FINAL,
 )
 from tipping_params import sample_lhs_params
+from fair_config import FAIR_PARAMS, SPECIES_CONFIGS_NGFS
 
 # ── configuration ───────────────────────────────────────────────────────────────
 # positional gain: `python 12_finder.py 0.01` (default) or `... 0.10`
@@ -42,8 +44,8 @@ BASE_SCENARIO_CLEAN = BASE_SCENARIO.replace("(", "").replace(")", "")
 
 EMISSIONS_FILE = "data/processed/NGFS_historic_merged_extended_to_2110.csv"
 FORCING_FILE   = "data/processed/NGFS_forcing.csv"
-PARAMS_FILE    = "data/raw/calibrated_constrained_parameters_calibration1.4.1.csv"
-SPECIES_FILE   = "data/raw/species_configs_properties_NGFS.csv"
+PARAMS_FILE    = FAIR_PARAMS            # single calibration (v1.4.0) via src/fair_config
+SPECIES_FILE   = SPECIES_CONFIGS_NGFS
 
 # Old converged reductions, per gain — used to seed the bracket so the finder only
 # has to refine (fast). We have both +1% and +10% from the previous calculator runs.
@@ -59,7 +61,7 @@ WORKSPACE = "output/calculator/finder"
 BRACKET  = 0.06     # ± around the seed reduction fraction
 TOL      = 0.002    # stop when the reduction-fraction interval is narrower than this
 MAX_ITER = 10
-# 5 stochastic realizations (was 1 deterministic): averages internal variability so
+# 10 stochastic realizations (was 1 deterministic): averages internal variability so
 # the resilience estimate isn't quantized at ~1/n_config or biased vs the 100-run
 # baseline. Every run already spans all 841 configs (the full ECS distribution), so
 # n_runs only samples weather noise. Kept at 100 tipping samples per the cost tradeoff.
@@ -100,6 +102,7 @@ df_forcing = pd.read_csv(FORCING_FILE)
 
 # LHS tipping params drawn once at full size; evaluate_candidate uses the first
 # N_FINDER_SAMPLES (matches the calculator's "generate max, use a slice").
+assert_configs_match_ensemble()   # params file must match the ensemble's config set
 lhs_params = sample_lhs_params(n_samples=N_TIPPING_SAMPLES_FINAL)
 
 # ── bisection per target year ─────────────────────────────────────────────────────
@@ -131,14 +134,14 @@ for ty in TARGET_YEARS:
     # bracket-sign check: the monotone gain(R) must straddle TARGET_GAIN across the
     # seeded bracket, else bisection converges silently to an edge. Widen to the full
     # [0, 0.99] if it doesn't; error if even that fails to bracket the target.
-    g_lo = _eval(lo, "bracket_lo")["achieved_resilience"] - baseline_resilience
-    g_hi = _eval(hi, "bracket_hi")["achieved_resilience"] - baseline_resilience
+    g_lo = _eval(lo, "bracket_lo")["achieved_gain"]
+    g_hi = _eval(hi, "bracket_hi")["achieved_gain"]
     if not gain_brackets_target(g_lo, g_hi, TARGET_GAIN):
         print(f"  [warn] bracket [{lo:.4f},{hi:.4f}] gains ({g_lo:.4f},{g_hi:.4f}) do not "
               f"straddle target {TARGET_GAIN}; widening to [0, 0.99]")
         lo, hi = 0.0, 0.99
-        g_lo = _eval(lo, "bracket_lo_wide")["achieved_resilience"] - baseline_resilience
-        g_hi = _eval(hi, "bracket_hi_wide")["achieved_resilience"] - baseline_resilience
+        g_lo = _eval(lo, "bracket_lo_wide")["achieved_gain"]
+        g_hi = _eval(hi, "bracket_hi_wide")["achieved_gain"]
         if not gain_brackets_target(g_lo, g_hi, TARGET_GAIN):
             raise RuntimeError(
                 f"target gain {TARGET_GAIN} not bracketed on [0, 0.99] for ty={ty} "
@@ -162,7 +165,7 @@ for ty in TARGET_YEARS:
             candidate_name=f"NDC_calc__ty{int(ty)}_r{mid:.6f}",
         )
         achieved_resilience = res["achieved_resilience"]
-        achieved_gain = achieved_resilience - baseline_resilience
+        achieved_gain = res["achieved_gain"]   # paired candidate - NDC from the same run
 
         if achieved_gain < TARGET_GAIN:
             lo = mid
@@ -179,12 +182,18 @@ for ty in TARGET_YEARS:
             break
 
     converged = 0.5 * (lo + hi)
+    # re-evaluate once AT the converged R so the reported resilience/gain/CO2 belong
+    # to that R (the bisection's last `res` was at the last midpoint, not `converged`).
+    res = _eval(converged, "converged")
+    achieved_resilience = res["achieved_resilience"]
+    achieved_gain = res["achieved_gain"]
     results.append({
         "target_year": ty,
         "converged_reduction_frac": converged,
         "achieved_resilience": achieved_resilience,
         "achieved_gain": achieved_gain,
-        "baseline_resilience": baseline_resilience,
+        "ndc_resilience": res["ndc_resilience"],      # paired NDC (same run)
+        "baseline_resilience": baseline_resilience,   # 09 summary value (cross-check)
         "co2_GtCO2": res["co2_GtCO2"],
         "reduction_vs_ndc2030_GtCO2": res["reduction_vs_ndc2030_GtCO2"],
         "reduction_vs_ndc2030_frac": res["reduction_vs_ndc2030_frac"],

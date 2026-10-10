@@ -42,7 +42,11 @@ print(f"{REP}: {len(sub)} rows", flush=True)
 # ── GFP PCA on the three feedback parameters (per config; rep scenario) ─────────
 X = StandardScaler().fit_transform(sub[PARAMS].values)
 pca = PCA(n_components=3).fit(X)
-pc1 = -pca.components_[0]                    # GFP = -PC1
+# orient loadings so GFP = oriented PC1 correlates positively with ECS (matches 11)
+from pca_orient import orient_by_correlation
+_raw_score = pca.transform(X)[:, 0]
+_oriented = orient_by_correlation(_raw_score, sub["ecs"].values)
+pc1 = pca.components_[0] if np.array_equal(_oriented, _raw_score) else -pca.components_[0]
 
 fig, axes = plt.subplots(2, 2, figsize=(TWO_COL, TWO_COL * 0.72))
 (axa, axb), (axc, axd) = axes

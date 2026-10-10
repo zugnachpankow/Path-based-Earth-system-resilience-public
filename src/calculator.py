@@ -14,7 +14,7 @@ from scipy.interpolate import interp1d
 from tqdm import tqdm, trange
 
 from monte_carlo_runner import monte_carlo_fair
-from fair_config import load_fair_params
+from fair_config import load_fair_params, FAIR_PARAMS
 from emission_floor import build_floor_map
 from temperature import processed_temperature
 from tipping import compute_tip_prob
@@ -22,7 +22,7 @@ from tipping_params import sample_lhs_params
 
 # ── resilience defaults ──────────────────────────
 DEFAULT_TEMP_THRESHOLD = 1.5    # °C by year 2100
-DEFAULT_RATE_THRESHOLD = 0.04   # °C/decade, 2000–2100
+DEFAULT_RATE_THRESHOLD = 0.04   # °C/yr (10-yr smoothed), 2000–2100
 DEFAULT_YEAR_TARGET    = 2100
 
 # fair time axis: must match the production NGFS runs (04_run_NGFS.py uses
@@ -38,7 +38,9 @@ N_FAIR_RUNS_FINAL        = 100   # full ensemble for the confirmatory run
 N_TIPPING_SAMPLES_BISECT = 100   # fast samples during bisection
 N_TIPPING_SAMPLES_FINAL  = 1000  # full samples for the final run
 
-n_jobs = multiprocessing.cpu_count()
+# Respect the SLURM allocation (cpus-per-task) rather than every core on the node;
+# fall back to the process's CPU affinity when not under SLURM.
+n_jobs = int(os.environ.get("SLURM_CPUS_PER_TASK", len(os.sched_getaffinity(0))))
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -246,7 +248,8 @@ def fast_full_crossed_bootstrap(T, B=1000, seed=0):
         ci = rng.integers(0, n_cfg,  size=n_cfg)
         ri = rng.integers(0, n_runs, size=n_runs)
         si = rng.integers(0, n_samp, size=n_samp)
-        Q[b] = T[ci][:, ri][:, :, si].mean()
+        # NaN-aware: failed tipping solves are NaN (never fillna(0)); drop them here
+        Q[b] = np.nanmean(T[ci][:, ri][:, :, si])
     return {
         "mean":    float(Q.mean()),
         "ci_low":  float(np.quantile(Q, 0.025)),
@@ -282,7 +285,7 @@ def compute_resilience_scalar(run_mean_temp, prob_any_tipping,
     run_mean_temp    : DataArray (timebounds, member) — 20-yr running mean, baseline-corrected
     prob_any_tipping : DataArray (config, run) — aggregated mean tipping probability
     temp_threshold   : °C limit at year_target
-    rate_threshold   : °C/decade rate limit over 2000–year_target
+    rate_threshold   : °C/yr rate limit (10-yr smoothed) over 2000–year_target
     year_target      : year at which temperature must be below threshold
     config_subset    : list of config values to include (None = all)
 
@@ -326,8 +329,27 @@ def compute_resilience_with_bootstrap(run_mean_temp, prob_any_tipping_sample,
     -------
     dict with mean, ci_low, ci_high, ci_half_width
     """
-    rm = run_mean_temp
+    resilience_binary = resilience_tensor(
+        run_mean_temp, prob_any_tipping_sample,
+        temp_threshold, rate_threshold, year_target, config_subset=config_subset,
+    )
+    T = resilience_binary.values.astype(np.float32)
+    ci = fast_full_crossed_bootstrap(T, B=n_bootstrap)
+    ci["ci_half_width"] = (ci["ci_high"] - ci["ci_low"]) / 2.0
+    return ci
 
+
+def resilience_tensor(run_mean_temp, prob_any_tipping_sample,
+                      temp_threshold=DEFAULT_TEMP_THRESHOLD,
+                      rate_threshold=DEFAULT_RATE_THRESHOLD,
+                      year_target=DEFAULT_YEAR_TARGET,
+                      config_subset=None):
+    """Per-(config, run, sample) resilience field: P(climate OK) x (1 - tip) per sample.
+
+    Shared by the single-scenario bootstrap and the paired candidate-minus-NDC gain
+    bootstrap. Returns a DataArray transposed to (config, run, sample).
+    """
+    rm = run_mean_temp
     climate_violation = (rm.sel(timebounds=slice(year_target, None)) > temp_threshold).any("timebounds")
     rate_of_change    = rm.diff("timebounds").rolling(timebounds=10, center=True).mean()
     rate_violation    = (rate_of_change.sel(timebounds=slice(2000, year_target)) > rate_threshold).any("timebounds")
@@ -335,15 +357,29 @@ def compute_resilience_with_bootstrap(run_mean_temp, prob_any_tipping_sample,
     binary_resilient = ~(climate_violation | rate_violation)
     binary_resilient = binary_resilient.unstack("member").astype(float)  # (run, config)
 
-    # broadcast: (run, config) × (sample, config, run) to (sample, config, run)
     resilience_binary = binary_resilient * (1.0 - prob_any_tipping_sample)
-
     if config_subset is not None:
         resilience_binary = resilience_binary.sel(config=config_subset)
+    return resilience_binary.transpose("config", "run", "sample")
 
-    # (config, run, sample) tensor for crossed bootstrap
-    T = resilience_binary.transpose("config", "run", "sample").values.astype(np.float32)
-    ci = fast_full_crossed_bootstrap(T, B=n_bootstrap)
+
+def compute_gain_bootstrap(rm_cand, pas_cand, rm_base, pas_base,
+                           temp_threshold=DEFAULT_TEMP_THRESHOLD,
+                           rate_threshold=DEFAULT_RATE_THRESHOLD,
+                           year_target=DEFAULT_YEAR_TARGET,
+                           config_subset=None, n_bootstrap=1000):
+    """Crossed-bootstrap CI for the PAIRED gain = resilience(candidate) - resilience(NDC).
+
+    Both resilience tensors come from the same FAIR run (same seeds, configs) and the
+    same LHS tipping samples, so the difference is taken cell-by-cell on the shared
+    (config, run, sample) grid before resampling.
+    """
+    T_cand = resilience_tensor(rm_cand, pas_cand, temp_threshold, rate_threshold,
+                               year_target, config_subset=config_subset)
+    T_base = resilience_tensor(rm_base, pas_base, temp_threshold, rate_threshold,
+                               year_target, config_subset=config_subset)
+    D = (T_cand - T_base).transpose("config", "run", "sample").values.astype(np.float32)
+    ci = fast_full_crossed_bootstrap(D, B=n_bootstrap)
     ci["ci_half_width"] = (ci["ci_high"] - ci["ci_low"]) / 2.0
     return ci
 
@@ -418,9 +454,14 @@ def compute_fragility_masks(configs, params_file, n_terciles=3):
 
     from sklearn.preprocessing import StandardScaler
     from sklearn.decomposition import PCA
+    from pca_orient import orient_by_correlation
     X_scaled = StandardScaler().fit_transform(df_sub.values)
     gf_raw   = PCA(n_components=1).fit_transform(X_scaled).flatten()
-    gf_raw   = -gf_raw
+    # orient explicitly so GFP correlates positively with ECS (sklearn's PC sign is
+    # arbitrary and flips in ~20% of bootstraps given the near-tie loadings).
+    ecs = (df_configs.loc[configs, "forcing_4co2"]
+           / df_configs.loc[configs, "ocean_heat_transfer[0]"] / 2).values
+    gf_raw   = orient_by_correlation(gf_raw, ecs)
     gf_norm  = (gf_raw - gf_raw.min()) / (gf_raw.max() - gf_raw.min())
     gf_scores = pd.Series(gf_norm, index=df_sub.index)
 
@@ -440,6 +481,25 @@ def compute_fragility_masks(configs, params_file, n_terciles=3):
 # ══════════════════════════════════════════════════════════════════════════════
 # CANDIDATE EVALUATION  
 # ══════════════════════════════════════════════════════════════════════════════
+
+def assert_configs_match_ensemble(temperature_file="output/all_scenarios_temperature.nc",
+                                  params_file=FAIR_PARAMS):
+    """Raise unless the parameter file and the concatenated ensemble share configs.
+
+    The calculator drives FAIR from ``params_file`` and compares its resilience to
+    the main-pipeline ensemble (same configs). If the two are from different
+    calibrations the config sets diverge and every per-config comparison is silently
+    misaligned; this guard makes that a hard error.
+    """
+    df, _ = load_fair_params(params_file)
+    cfg = xr.open_dataset(temperature_file).config.values
+    if set(df.index) != set(cfg):
+        raise ValueError(
+            f"config mismatch: {params_file} has {len(df.index)} configs, "
+            f"{temperature_file} has {len(cfg)}; sets differ -- parameter file and "
+            "ensemble are from different calibrations."
+        )
+
 
 def gain_brackets_target(gain_lo, gain_hi, target_gain):
     """Whether a monotone-increasing ``gain(R)`` has its ``gain == target_gain`` root
@@ -534,26 +594,40 @@ def evaluate_candidate(reduction_frac, df_emissions, years, year_cols,
         stochastic=n_runs > 1,
     )
 
-    # ── 4. aggregate temperature ─────────────────────────────────────────────
-    raw_temp, run_mean, configs, runs = aggregate_temperature_from_runs(
+    # ── 4. aggregate temperature: candidate AND the NDC base, from the SAME runs
+    raw_cand, rm_cand, configs, runs = aggregate_temperature_from_runs(
         run_dir, candidate_name, max_runs=n_runs
     )
+    raw_base, rm_base, _, _ = aggregate_temperature_from_runs(
+        run_dir, base_scenario_name, max_runs=n_runs
+    )
 
-    # ── 5. tipping probabilities (shared cascade) ────────────────────────────
+    # ── 5. tipping probabilities, driven by the PROCESSED temperature exactly as
+    #       src/run_tipping.py (per-member 1850-1900 rebase + 20-yr running mean,
+    #       then held from the last valid year to T_END inside compute_tip_prob) ─
     tip_configs = configs if config_subset is None else [c for c in configs if c in set(config_subset)]
     if lhs_params is None:
         lhs_params = sample_lhs_params(n_samples=N_TIPPING_SAMPLES_FINAL)
 
-    prob_any, prob_any_sample, _ = compute_tip_prob(
-        raw_temp, lhs_params, n_samples=n_samples, configs=tip_configs, runs=runs,
+    pa_cand, pas_cand, _ = compute_tip_prob(
+        processed_temperature(raw_cand), lhs_params,
+        n_samples=n_samples, configs=tip_configs, runs=runs,
+    )
+    pa_base, pas_base, _ = compute_tip_prob(
+        processed_temperature(raw_base), lhs_params,
+        n_samples=n_samples, configs=tip_configs, runs=runs,
     )
 
-    # ── 6. resilience ────────────────────────────────────────────────────────
+    # ── 6. resilience + PAIRED gain (candidate - NDC from the same run/seeds/LHS) ─
     achieved_resilience = compute_resilience_scalar(
-        run_mean, prob_any,
-        temp_threshold, rate_threshold, year_target,
+        rm_cand, pa_cand, temp_threshold, rate_threshold, year_target,
         config_subset=config_subset,
     )
+    ndc_resilience = compute_resilience_scalar(
+        rm_base, pa_base, temp_threshold, rate_threshold, year_target,
+        config_subset=config_subset,
+    )
+    achieved_gain = achieved_resilience - ndc_resilience
 
     # emissions-side reductions for the Fig-3 panel-b annotations (df_base = the
     # NDC baseline; cheap, no FAIR/tipping)
@@ -565,6 +639,8 @@ def evaluate_candidate(reduction_frac, df_emissions, years, year_cols,
         "candidate_name": candidate_name,
         "target_year": target_year,
         "achieved_resilience": achieved_resilience,
+        "ndc_resilience": ndc_resilience,       # cross-check vs the 09 summary value
+        "achieved_gain": achieved_gain,         # paired difference, same run
         "co2_GtCO2": co2_GtCO2,
         "reduction_vs_ndc2030_GtCO2": vs30_abs,
         "reduction_vs_ndc2030_frac": vs30_frac,
@@ -574,8 +650,8 @@ def evaluate_candidate(reduction_frac, df_emissions, years, year_cols,
     }
 
     if return_bootstrap:
-        result["bootstrap"] = compute_resilience_with_bootstrap(
-            run_mean, prob_any_sample,
+        result["bootstrap"] = compute_gain_bootstrap(
+            rm_cand, pas_cand, rm_base, pas_base,
             temp_threshold, rate_threshold, year_target,
             config_subset=config_subset, n_bootstrap=n_bootstrap,
         )

@@ -34,7 +34,10 @@ target_cols = non_year_cols + all_year_cols
 # reindex to the annual grid: keeps the original 5-yearly values, adds NaNs for the new years in between
 df_interp = df_current.reindex(columns=target_cols).copy()
 
-# now interpolate across columns (axis=1). Use limit_direction='both' to fill edge NaNs by linear extrapolation
+# interpolate across columns (axis=1). pandas .interpolate does NOT extrapolate: it
+# linearly fills interior gaps, and limit_direction='both' back-/forward-FILLS the
+# edges (so the last native value, 2100.5, is held constant out to 2300.5 -- not a
+# linear trend). The explicit ffill/bfill below is a belt-and-suspenders no-op.
 df_interp[all_year_cols] = df_interp[all_year_cols].astype(float).interpolate(axis=1, limit_direction='both')
 
 # if there are still NaNs (unlikely), fill forward/backward as last resort:
@@ -55,9 +58,13 @@ def apply_absolute_reduction(
     Absolute case: subtract a constant yearly amount, but never below ``baseline``.
 
     absolute_amount = reduction_rate * value(start_year), then
-    value[t] = max(value[t-1] - absolute_amount, floor).
+    value[t] = max(value[t-1] - absolute_amount, baseline).
 
-    The floor is the species' natural background (fair ``baseline_emissions``).
+    The floor is the species' natural background (fair ``baseline_emissions``). A
+    species whose start value is already at or below that background -- including
+    net-negative emitters such as CO2 AFOLU -- is held constant from the start year:
+    there is nothing left to reduce, and the old code (abs_amount = rate*start_value,
+    which is < 0 for a negative start) made the value RISE every year instead.
     """
     out = row.copy()
     years_float = np.array([float(y) for y in year_cols])
@@ -71,12 +78,14 @@ def apply_absolute_reduction(
         start_idx = start_idx_arr[0]
 
     start_value = values[start_idx]
-    abs_amount = start_value * reduction_rate  # constant amount per year
-    floor = min(baseline, start_value)
 
-    # subtract constant amount year after year, clamped at the natural floor
-    for i in range(start_idx + 1, len(values)):
-        values[i] = max(values[i - 1] - abs_amount, floor)
+    if start_value <= baseline:
+        # at/below the natural floor already -> hold constant from the start year
+        values[start_idx + 1:] = start_value
+    else:
+        abs_amount = start_value * reduction_rate  # constant amount per year
+        for i in range(start_idx + 1, len(values)):
+            values[i] = max(values[i - 1] - abs_amount, baseline)
 
     out[year_cols] = values
     if np.isnan(values).any():

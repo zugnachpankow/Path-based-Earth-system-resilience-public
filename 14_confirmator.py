@@ -28,10 +28,11 @@ sys.path.insert(0, os.path.join(_HERE, "src"))
 os.chdir(_HERE)
 
 from calculator import (
-    evaluate_candidate, compute_fragility_masks,
+    evaluate_candidate, compute_fragility_masks, assert_configs_match_ensemble,
     N_FAIR_RUNS_FINAL, N_TIPPING_SAMPLES_FINAL,
 )
 from tipping_params import sample_lhs_params
+from fair_config import FAIR_PARAMS, SPECIES_CONFIGS_NGFS
 
 # ── mode (positional) ─────────────────────────────────────────────────────────────
 _mode = sys.argv[1] if len(sys.argv) > 1 else "0.01"
@@ -49,8 +50,8 @@ BASE_SCENARIO_CLEAN = BASE_SCENARIO.replace("(", "").replace(")", "")
 
 EMISSIONS_FILE = "data/processed/NGFS_historic_merged_extended_to_2110.csv"
 FORCING_FILE   = "data/processed/NGFS_forcing.csv"
-PARAMS_FILE    = "data/raw/calibrated_constrained_parameters_calibration1.4.1.csv"
-SPECIES_FILE   = "data/raw/species_configs_properties_NGFS.csv"
+PARAMS_FILE    = FAIR_PARAMS            # single calibration (v1.4.0) via src/fair_config
+SPECIES_FILE   = SPECIES_CONFIGS_NGFS
 WORKSPACE      = "output/calculator/confirmator"
 
 # GFP-mode settings (must match 13_gfp_percentile.py)
@@ -80,6 +81,7 @@ df_emissions = pd.read_csv(EMISSIONS_FILE)
 year_cols = [c for c in df_emissions.columns if c.replace(".", "", 1).isdigit()]
 years = np.array([float(c) for c in year_cols])
 df_forcing = pd.read_csv(FORCING_FILE)
+assert_configs_match_ensemble()   # params file must match the ensemble's config set
 lhs_params = sample_lhs_params(n_samples=N_TIPPING_SAMPLES_FINAL)
 
 
@@ -125,14 +127,15 @@ if GFP_MODE:
             return_bootstrap=True, n_bootstrap=N_BOOTSTRAP,
             candidate_name=f"NDC_calc__gfp_pct{pct:02d}_g{int(gain*100):02d}_r{red:.6f}",
         )
-        boot = res["bootstrap"]
+        boot = res["bootstrap"]   # paired candidate - NDC gain bootstrap (over subset)
         records.append({
             "percentile": pct, "gf_value": gf_target, "n_configs": len(cfg_subset),
             "gain_target": gain, "reduction_frac": red,
             "achieved_resilience": res["achieved_resilience"],
-            "achieved_gain": res["achieved_resilience"] - baseline_resilience,
+            "ndc_resilience": res["ndc_resilience"],
+            "achieved_gain": res["achieved_gain"],
             "baseline_resilience": baseline_resilience,
-            "bootstrap_mean": boot["mean"], "ci_low": boot["ci_low"],
+            "bootstrap_gain": boot["mean"], "ci_low": boot["ci_low"],
             "ci_high": boot["ci_high"], "ci_half_width": boot["ci_half_width"],
             "co2_GtCO2": res["co2_GtCO2"],
             "n_runs": N_FAIR_RUNS_FINAL, "n_samples": N_TIPPING_SAMPLES_FINAL,
@@ -186,21 +189,31 @@ for ty, red in sorted(reductions.items()):
         return_bootstrap=True, n_bootstrap=N_BOOTSTRAP,
         candidate_name=f"NDC_calc__ty{int(ty)}_r{red:.6f}",
     )
-    boot = res["bootstrap"]
-    achieved_gain = res["achieved_resilience"] - baseline_resilience
+    boot = res["bootstrap"]           # paired candidate - NDC gain bootstrap
+    achieved_gain = res["achieved_gain"]
+    # cross-check: this gain-mode run uses the full ensemble (config_subset=None), so
+    # the calculator's NDC resilience must reproduce the 09 summary value exactly.
+    if abs(res["ndc_resilience"] - baseline_resilience) > 1e-9:
+        raise AssertionError(
+            f"calculator NDC resilience {res['ndc_resilience']:.12f} != 09 baseline "
+            f"{baseline_resilience:.12f} (diff {res['ndc_resilience'] - baseline_resilience:.2e}); "
+            "the calculator and the main pipeline disagree for the NDC scenario."
+        )
     print(f"  resilience={res['achieved_resilience']:.6f}  gain={achieved_gain:.6f}  "
-          f"bootstrap mean={boot['mean']:.6f} [{boot['ci_low']:.6f}, {boot['ci_high']:.6f}]", flush=True)
+          f"gain bootstrap mean={boot['mean']:.6f} [{boot['ci_low']:.6f}, {boot['ci_high']:.6f}]", flush=True)
 
     row = {
         "target_year": ty, "reduction_frac": red,
         "achieved_resilience": res["achieved_resilience"],
+        "ndc_resilience": res["ndc_resilience"],
         "achieved_gain": achieved_gain, "baseline_resilience": baseline_resilience,
         "co2_GtCO2": res["co2_GtCO2"],
         "reduction_vs_ndc2030_GtCO2": res["reduction_vs_ndc2030_GtCO2"],
         "reduction_vs_ndc2030_frac": res["reduction_vs_ndc2030_frac"],
         "ndc_2030_GtCO2": res["ndc_2030_GtCO2"],
-        "bootstrap_mean": boot["mean"], "bootstrap_gain": boot["mean"] - baseline_resilience,
-        "ci_low": boot["ci_low"], "ci_high": boot["ci_high"], "ci_half_width": boot["ci_half_width"],
+        # bootstrap is now over the PAIRED gain; ci_* are the gain CI directly
+        "bootstrap_gain": boot["mean"], "ci_low": boot["ci_low"],
+        "ci_high": boot["ci_high"], "ci_half_width": boot["ci_half_width"],
         "target_gain": TARGET_GAIN, "temp_threshold": TEMP_THRESHOLD, "rate_threshold": RATE_THRESHOLD,
         "n_runs": N_FAIR_RUNS_FINAL, "n_samples": N_TIPPING_SAMPLES_FINAL,
     }

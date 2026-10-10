@@ -31,6 +31,15 @@ OUT_DIR = os.path.join(FIG_DIR, "si"); os.makedirs(OUT_DIR, exist_ok=True)
 
 RANGES = [("0.25–0.55 °C/dec", "rate0.025_0.055", cmcs.glasgow(0.30)),
           ("0.30–0.50 °C/dec", "rate0.03_0.05",   cmcs.glasgow(0.70))]
+# 10_sensitivity writes only the rate range in problem["bounds"][2] (the main
+# 0.025-0.055); a second range exists only if 10 was re-run with edited bounds.
+# Skip ranges whose output dir is absent rather than crashing on a missing file.
+RANGES = [(lbl, d, c) for (lbl, d, c) in RANGES
+          if os.path.isdir(os.path.join("output", "sensitivity", d))]
+if not RANGES:
+    raise FileNotFoundError(
+        "no sensitivity rate-range dirs under output/sensitivity (run 10_sensitivity first)."
+    )
 FOCAL = ["ssp126", "ssp245", "ssp534-over"]
 PARAMS = ["Year", "Temp", "Rate", "Tipping"]
 

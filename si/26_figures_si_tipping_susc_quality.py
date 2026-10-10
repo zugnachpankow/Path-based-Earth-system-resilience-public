@@ -43,12 +43,19 @@ params = sample_lhs_params(n_samples=1000)
 feat = list(all_bounds.keys())
 X = StandardScaler().fit_transform(np.column_stack([params[k] for k in feat]))
 pca = PCA(n_components=3).fit(X)
-pc1_loadings = -pca.components_[0]                       # tipping_susc = -PC1
-susc_pca = -pca.transform(X)[:, 0]
-susc_pca = (susc_pca - susc_pca.min()) / (susc_pca.max() - susc_pca.min())
+_raw_score = pca.transform(X)[:, 0]
 
 # ── per-scenario RF (R² across scenarios; detail for REP) ──────────────────────
 tip, _ = load_tipping()
+# orient PC1 so susceptibility correlates positively with the mean tipping
+# probability per sample (same rule as 11/16); flip the loadings to match.
+from pca_orient import orient_by_correlation
+_tip_ref = np.nanmean([tip[sc]["prob_any_tipping_sample"].mean(dim=["config", "run"]).values
+                       for sc in main_scenarios if sc in tip], axis=0)
+susc_pca = orient_by_correlation(_raw_score, _tip_ref)
+pc1_loadings = (pca.components_[0] if np.array_equal(susc_pca, _raw_score)
+                else -pca.components_[0])
+susc_pca = (susc_pca - susc_pca.min()) / (susc_pca.max() - susc_pca.min())
 r2_by_sc, rep = {}, {}
 for sc in main_scenarios:
     if sc not in tip:

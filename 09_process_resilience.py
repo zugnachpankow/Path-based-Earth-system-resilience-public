@@ -44,6 +44,23 @@ running_mean_temps = {
 }
 tipping_sample_dict = load_tipping(TIPPING_DIR)
 
+# solver report (written by src/run_tipping.py): refuse to process if ANY tipping
+# solve failed, so a failure is never silently absorbed into the resilience.
+SOLVER_REPORT = join(TIPPING_DIR, "solver_report.csv")
+solver_report_df = None
+if os.path.exists(SOLVER_REPORT):
+    solver_report_df = pd.read_csv(SOLVER_REPORT)
+    n_fail_total = int(solver_report_df["n_solver_failures"].sum())
+    if n_fail_total > 0:
+        bad = solver_report_df[solver_report_df["n_solver_failures"] > 0]
+        raise RuntimeError(
+            f"{n_fail_total} failed tipping solves in {SOLVER_REPORT}; refusing to "
+            f"process. Offending scenarios:\n{bad.to_string(index=False)}"
+        )
+    print(f"Solver report OK: 0 failures across {len(solver_report_df)} scenarios.")
+else:
+    print(f"[warn] no solver report at {SOLVER_REPORT} (run src/run_tipping.py via 07).")
+
 # GCAM / MESSAGE scenarios are not used
 scenarios = [s for s in running_mean_temps if "GCAM" not in s and "MESSAGE" not in s]
 
@@ -128,7 +145,16 @@ def process_condition(res_x, res_y, rate):
             on="scenario", how="left",
         )
         rows.append(res)
-    pd.concat(rows, ignore_index=True).to_csv(summary_file, index=False)
+    summary_df = pd.concat(rows, ignore_index=True)
+    # attach the per-scenario solver counts (0 everywhere, since we raised otherwise)
+    if solver_report_df is not None:
+        clean = solver_report_df.copy()
+        clean["scenario"] = clean["scenario"].str.replace(r"[\(\)]", "", regex=True)
+        summary_df["_sc"] = summary_df["scenario"].str.replace(r"[\(\)]", "", regex=True)
+        summary_df = summary_df.merge(
+            clean.rename(columns={"scenario": "_sc"}), on="_sc", how="left"
+        ).drop(columns="_sc")
+    summary_df.to_csv(summary_file, index=False)
     print(f"Wrote summary: {summary_file}")
 
 

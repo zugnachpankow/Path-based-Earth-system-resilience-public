@@ -5,7 +5,7 @@ Produces, under output/timescale_check/:
                                   element x tau, current vs fixed, and the ratio to tau.
   table_tipping_times.{csv,md} — time to x>0 (the compute_tip_prob tipped criterion) at constant
                                   GMT/threshold ratios, current vs fixed, min/central/max tau, and
-                                  whether it crosses within the 12,700-yr committed window.
+                                  whether it crosses within the committed window (T_END - 2300 yr).
   fig_timescales.{png,pdf}     — x(t) current vs fixed at 4.0/1.8 for the central tau of each element.
   README.md                    — key numbers.
 
@@ -22,6 +22,7 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(_HERE, "..", "src"))
 os.chdir(os.path.join(_HERE, ".."))
 from tipping import Earth_System, I_CAL, ode_timescale
+from tipping_params import T_END
 
 OUT = os.path.join("output", "timescale_check"); os.makedirs(OUT, exist_ok=True)
 NO_PF = dict(pf_wais_to_gis=0.0, pf_thc_to_gis=0.0, pf_gis_to_thc=0.0, pf_wais_to_thc=0.0,
@@ -29,7 +30,11 @@ NO_PF = dict(pf_wais_to_gis=0.0, pf_thc_to_gis=0.0, pf_gis_to_thc=0.0, pf_wais_t
 # element -> (name, [min, central, max] tau in yr)   (central = Armstrong McKay 2022; WAIS 500 = planned new lower bound)
 TAUS = {0: ("GIS", [1000, 10000, 15000]), 1: ("AMOC", [15, 50, 300]),
         2: ("WAIS", [500, 2000, 13000]), 3: ("AMAZ", [50, 100, 200])}
-WINDOW = 12700.0   # yr the forcing is held (2300 -> t_end=15000) -> time available to tip
+# time available to tip = T_END minus the year the forcing is held from. The SSP
+# forcing runs to ~2300, so the committed window = T_END - 2300 (derived, not the old
+# hard-coded 12,700 that assumed t_end=15000).
+HOLD_YEAR = 2300.0
+WINDOW = T_END - HOLD_YEAR
 
 
 def _net(elem, tau, conv, thr):
@@ -74,7 +79,7 @@ for e, (nm, taus) in TAUS.items():
             brows.append({"element": nm, "tau_level": lvl, "tau_yr": tau, "ratio": r,
                           "t_x>0_current_yr": round(tc_cur, 1), "t_x>0_fixed_yr": round(tc_fix, 1),
                           "units_of_T_ODE": round(tc_cur / tau, 3),
-                          "within_12700_current": bool(tc_cur < WINDOW), "within_12700_fixed": bool(tc_fix < WINDOW)})
+                          "within_window_current": bool(tc_cur < WINDOW), "within_window_fixed": bool(tc_fix < WINDOW)})
 B = pd.DataFrame(brows); B.to_csv(os.path.join(OUT, "table_tipping_times.csv"), index=False)
 with open(os.path.join(OUT, "table_tipping_times.md"), "w") as fh:
     fh.write("## Time to x>0 (tipped) at constant GMT/threshold ratio; committed window = %d yr\n\n" % WINDOW)
@@ -121,12 +126,12 @@ with open(os.path.join(OUT, "README.md"), "w") as fh:
                 ", ".join(map(str, RATIOS))))
     ex = B[(B.element=='GIS') & (B.tau_level=='central') & (B.ratio==2.0)].iloc[0]
     fh.write(f"- Example GIS τ=10000 at ratio 2.0: current {ex['t_x>0_current_yr']:.0f} yr, fixed {ex['t_x>0_fixed_yr']:.0f} yr.\n")
-    n_cur = int(B.within_12700_current.sum()); n_fix = int(B.within_12700_fixed.sum())
-    fh.write(f"- Crossings within the 12,700-yr committed window: current {n_cur}/{len(B)}, fixed {n_fix}/{len(B)} "
+    n_cur = int(B.within_window_current.sum()); n_fix = int(B.within_window_fixed.sum())
+    fh.write(f"- Crossings within the {WINDOW:.0f}-yr committed window: current {n_cur}/{len(B)}, fixed {n_fix}/{len(B)} "
              "(the fix lets slower elements tip in-window).\n")
     fh.write(f"- Pipeline solver (LSODA, atol=rtol=1e-3) vs tight: max deviation {Pp.dev_pct.max():.3f}% (<1%).\n")
 
 print("Table A (calibration):\n", A.to_string(index=False))
 print("\nPipeline tolerance:\n", Pp.to_string(index=False))
-print(f"\nwithin-window: current {int(B.within_12700_current.sum())}/{len(B)}, fixed {int(B.within_12700_fixed.sum())}/{len(B)}")
+print(f"\nwithin-window: current {int(B.within_window_current.sum())}/{len(B)}, fixed {int(B.within_window_fixed.sum())}/{len(B)}")
 print(f"Saved -> {OUT}")

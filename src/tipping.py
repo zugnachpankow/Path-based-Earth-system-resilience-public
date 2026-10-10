@@ -1,7 +1,9 @@
 from joblib import Parallel, delayed
-import multiprocessing
+import os
 
-n_jobs = multiprocessing.cpu_count()
+# Respect the SLURM allocation (cpus-per-task) instead of grabbing every core on the
+# node; fall back to the process's CPU affinity when not under SLURM.
+n_jobs = int(os.environ.get("SLURM_CPUS_PER_TASK", len(os.sched_getaffinity(0))))
 
 import sys
 import matplotlib.pyplot as plt

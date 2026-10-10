@@ -31,7 +31,9 @@ import pandas as pd
 import xarray as xr
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.join(_HERE, "src"))
 os.chdir(_HERE)  # resolve output/ from the repo root, not the job's cwd
+from resilience import BOOTSTRAP_SEED   # shared bootstrap seed (same as 09)
 
 RUNNING_MEAN_PATH = "output/running_mean_temps.pkl"
 TIPPING_DIR       = "output/tipping"
@@ -188,7 +190,7 @@ for SCENARIO in SCENARIOS:
     for name, T in tensors.items():
         point_est = float(T.mean())
         t0 = time.perf_counter()
-        result = crossed_bootstrap(T, B=B, seed=42)
+        result = crossed_bootstrap(T, B=B, seed=BOOTSTRAP_SEED)
         elapsed = time.perf_counter() - t0
 
         row = {

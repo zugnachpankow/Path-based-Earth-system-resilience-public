@@ -22,8 +22,11 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(_HERE, "src"))
 os.chdir(_HERE)  # resolve output/ + data/ from the repo root
 from resilience import load_tipping
+from fair_config import FAIR_PARAMS, load_fair_params
+from tipping_params import all_bounds
+from pca_orient import orient_by_correlation
 
-PARAMS_FILE = "data/raw/calibrated_constrained_parameters_calibration1.4.1.csv"
+PARAMS_FILE = FAIR_PARAMS   # single calibration (v1.4.0) via src/fair_config
 TEMPERATURE_FILE = "output/all_scenarios_temperature.nc"
 RUNNING_MEANS_FILE = "output/running_mean_temps.pkl"
 TIPPING_DIR = "output/tipping"
@@ -53,7 +56,16 @@ running_mean_temps = {
 tipping_sample_dict = load_tipping(TIPPING_DIR)
 
 #### PARAMS  (verbatim from results_nature/plot.py)
-df_configs = pd.read_csv(PARAMS_FILE, index_col=0)
+df_configs, _ = load_fair_params(PARAMS_FILE)
+
+# guard: the parameter file and the concatenated temperature ensemble must share
+# the exact same config set, else the per-config .map() below aligns silently wrong.
+if set(df_configs.index) != set(configs):
+    raise ValueError(
+        f"config mismatch: {PARAMS_FILE} has {len(df_configs.index)} configs, "
+        f"{TEMPERATURE_FILE} has {len(configs)}; sets differ -- "
+        "parameter file and ensemble are from different calibrations."
+    )
 
 df_params_all = pd.MultiIndex.from_product(
     [scenarios_no_gcam_message, configs, runs],   # include runs!
@@ -67,12 +79,18 @@ df_params_all['deep_ocean_efficacy'] = df_params_all['config'].map(df_configs['d
 ecs_per_config = df_configs['forcing_4co2'] / df_configs['ocean_heat_transfer[0]'] / 2
 df_params_all['ecs'] = df_params_all['config'].map(ecs_per_config)
 df_params_all['time'] = 2100
-temps_list = []
+# merge the 2100 running-mean temperature on (scenario, config, run) LABELS, not by
+# position: the from_product order above follows the given config/run lists, which
+# need not be sorted, so the old positional extend() could misalign members.
+temp_frames = []
 for scenario in scenarios_no_gcam_message:
-    temp_da = running_mean_temps[scenario].sel(timebounds=2100)
-    temp_ordered = temp_da.to_series().sort_index(level=['config', 'run']).values
-    temps_list.extend(temp_ordered)
-df_params_all['temp'] = temps_list
+    s = (running_mean_temps[scenario].sel(timebounds=2100)
+         .to_series().rename("temp").reset_index())
+    s["scenario"] = scenario
+    temp_frames.append(s[["scenario", "config", "run", "temp"]])
+df_temp = pd.concat(temp_frames, ignore_index=True)
+df_params_all = df_params_all.merge(df_temp, on=["scenario", "config", "run"], how="left")
+assert df_params_all["temp"].notna().all(), "temp merge left unmatched (scenario,config,run) rows"
 print(df_params_all.head(), flush=True)
 print(f"df_params_all shape: {df_params_all.shape}", flush=True)
 
@@ -90,7 +108,9 @@ for scenario in scenarios_no_gcam_message:
     pca = PCA(n_components=1)
     general_feedback_pc = pca.fit_transform(X_scaled_pca).flatten()
 
-    general_feedback_pc = -general_feedback_pc
+    # orient so GFP correlates positively with ECS (deterministic; the sklearn PC
+    # sign is arbitrary and flips in ~20% of bootstraps given the near-tie loadings)
+    general_feedback_pc = orient_by_correlation(general_feedback_pc, df_s['ecs'].values)
 
     # Rescale to 0–1 within this scenario
     general_feedback_pc_scaled = (general_feedback_pc - general_feedback_pc.min()) / (general_feedback_pc.max() - general_feedback_pc.min())
@@ -115,34 +135,9 @@ df_params_all.to_pickle(os.path.join(SAVE_DIR, "df_params_all.pkl"))
 print(f"Wrote {os.path.join(SAVE_DIR, 'df_params_all.pkl')}")
 
 # ═══════════════ Tipping susceptibility (LHS + PCA + RF) — verbatim ══════════
-# Define parameter bounds (identical to src/tipping.py, so the LHS samples align
-# with the tipping output's `sample` dimension)
-param_bounds = {
-    "gis_time":   (1000, 15000),
-    "thc_time":   (15, 300),
-    "wais_time":  (2000, 13000),
-    "amaz_time":  (50, 200),
-    "limits_gis": (0.8, 3.0),
-    "limits_thc": (1.4, 8.0),
-    "limits_wais": (1.0, 3.0),
-    "limits_amaz": (2.0, 6.0),
-}
-pf_bounds = {
-    "pf_wais_to_gis":  (0.1, 0.2),
-    "pf_thc_to_gis":   (-1.0, -0.1),
-    "pf_gis_to_thc":   (0.1, 1.0),
-    "pf_wais_to_thc":  (-0.3, 0.3),
-    "pf_gis_to_wais":  (0.1, 1.0),
-    "pf_thc_to_wais":  (0.1, 0.15),
-    "pf_thc_to_amaz":  (-0.4, 0.4)
-}
-strength_bounds = {
-    "strength": (0.1, 1.0)
-}
-all_bounds = {}
-all_bounds.update(param_bounds)
-all_bounds.update(pf_bounds)
-all_bounds.update(strength_bounds)
+# Parameter bounds come from the single source of truth in src/tipping_params.py,
+# so the LHS samples here align exactly with the tipping output's `sample` dimension
+# (no duplicated, drift-prone copy).
 
 # Generate LHS samples
 np.random.seed(1234)
@@ -168,7 +163,14 @@ scaler_tr = StandardScaler()
 X_tr_scaled = scaler_tr.fit_transform(df_lhs[tipping_columns])
 pca_tr = PCA(n_components=1)
 tipping_susc_pc = pca_tr.fit_transform(X_tr_scaled).flatten()
-tipping_susc_pc = -tipping_susc_pc
+# orient so tipping susceptibility correlates positively with the mean tipping
+# probability per LHS sample (averaged over scenarios/config/run), deterministically
+_tip_per_sample = np.nanmean(
+    [tipping_sample_dict[sc]['prob_any_tipping_sample'].mean(dim=['config', 'run']).values
+     for sc in sorted(tipping_sample_dict)],
+    axis=0,
+)
+tipping_susc_pc = orient_by_correlation(tipping_susc_pc, _tip_per_sample)
 tipping_susc_scaled = (tipping_susc_pc - tipping_susc_pc.min()) / (tipping_susc_pc.max() - tipping_susc_pc.min())
 df_lhs["tipping_susc"] = tipping_susc_scaled
 

@@ -124,9 +124,11 @@ for _res_y, _rate, _sub in [
         non_resilient_temp = running_mean_temp.where(~resilient, drop=True)
 
         res_s     = resilient.set_index(member=["config", "run"]).unstack("member")
-        tip_prob  = tipping_combined["prob_any_tipping"].sel(scenario=scenario).fillna(0.0)
+        # no fillna(0): failed tipping solves stay NaN and are dropped by the NaN-aware
+        # mean below (xarray .mean skips NaN), so one failure never pulls the index down.
+        tip_prob  = tipping_combined["prob_any_tipping"].sel(scenario=scenario)
         res_with_tip = res_s.astype(float) * (1.0 - tip_prob)
-        resilience_index_with_tipping = res_with_tip.sum().item() / res_with_tip.size
+        resilience_index_with_tipping = float(res_with_tip.mean())
 
         no_climate = (~climate_violation).astype(float)
         no_rate    = (~rate_violation).astype(float)

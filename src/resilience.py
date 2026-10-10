@@ -73,7 +73,11 @@ def compute_resilience(rm, res_x, res_y, rate, res_end=None):
     return df.drop(columns=["layer"], errors="ignore")
 
 
-def crossed_bootstrap(T, B=1000, seed=0):
+# single bootstrap seed shared by 09 and 09b, so both resample identically.
+BOOTSTRAP_SEED = 0
+
+
+def crossed_bootstrap(T, B=1000, seed=BOOTSTRAP_SEED):
     """Multi-level crossed bootstrap resampling (config, run, sample) of a score tensor.
 
     Each of the three dimensions of ``T`` (shape ``(n_cfg, n_runs, n_samp)``) is
@@ -90,7 +94,8 @@ def crossed_bootstrap(T, B=1000, seed=0):
         cfg_idx = rng.integers(0, n_cfg, size=n_cfg)
         run_idx = rng.integers(0, n_runs, size=n_runs)
         samp_idx = rng.integers(0, n_samp, size=n_samp)
-        Q[b] = T[cfg_idx][:, run_idx][:, :, samp_idx].mean()
+        # NaN-aware: failed tipping solves are NaN (never fillna(0)); drop them here
+        Q[b] = np.nanmean(T[cfg_idx][:, run_idx][:, :, samp_idx])
     return {
         "mean": float(Q.mean()),
         "ci_low": float(np.quantile(Q, 0.025)),

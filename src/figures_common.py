@@ -1,4 +1,4 @@
-"""figures_common.py — shared setup + loaders for the figure scripts (14/15/16).
+"""figures_common.py — shared setup + loaders for the figure scripts (15/16/17).
 """
 import os
 import pickle
@@ -13,6 +13,20 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import cmcrameri.cm as cmcs
 
+from fair_config import FAIR_PARAMS
+
+
+def time_to_net_zero_yr(rate_pct):
+    """Years to net-zero CO2 at a constant ``rate_pct`` %/yr cut = round(100/rate).
+
+    Single source of truth so the 17 heatmap axis and the si/32 table agree (e.g.
+    8 %/yr -> 100/8 = 12.5 -> 13). Uses round-half-up (Python's round / "%.0f" use
+    banker's rounding, which disagreed: 12 vs 13).
+    """
+    import math
+    return int(math.floor(100.0 / rate_pct + 0.5))
+
+
 # ── repo-relative paths (no os.chdir needed) ───────────────────────────────────
 REPO   = Path(__file__).resolve().parents[1]
 OUTPUT = REPO / "output"
@@ -22,7 +36,7 @@ TEMPERATURE_FILE   = str(OUTPUT / "all_scenarios_temperature.nc")
 RUNNING_MEANS_FILE = str(OUTPUT / "running_mean_temps.pkl")
 TIPPING_DIR        = str(OUTPUT / "tipping")
 DF_PARAMS_FILE     = str(OUTPUT / "feedback" / "df_params_all.pkl")
-FAIR_PARAMS_FILE   = str(DATA / "raw" / "calibrated_constrained_parameters_calibration1.4.1.csv")
+FAIR_PARAMS_FILE   = FAIR_PARAMS   # single calibration (v1.4.0) via src/fair_config
 # production rate range for the sensitivity (0.25–0.55 °C/decade); each range is saved
 # in its own subdir by 10_sensitivity so cutoffs can be compared in an SI.
 SOBOL_RATE_DIR     = "rate0.025_0.055"

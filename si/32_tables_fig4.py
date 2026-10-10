@@ -30,6 +30,8 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(_HERE, "..", "src"))
 os.chdir(os.path.join(_HERE, ".."))
 from calculator import compute_fragility_masks
+from fair_config import FAIR_PARAMS
+from figures_common import time_to_net_zero_yr
 
 OUT_DIR = os.path.join("tables"); os.makedirs(OUT_DIR, exist_ok=True)
 
@@ -39,7 +41,7 @@ CONF_1   = "output/calculator/confirmator/confirmed_results_gain0.01.csv"
 CONF_10  = "output/calculator/confirmator/confirmed_results_gain0.1.csv"
 CONF_GFP = "output/calculator/confirmator/confirmed_gfp_percentile.csv"
 EMISSIONS_FILE = "data/processed/NGFS_historic_merged_extended_to_2110.csv"
-PARAMS_FILE    = "data/raw/calibrated_constrained_parameters_calibration1.4.1.csv"
+PARAMS_FILE    = FAIR_PARAMS   # single calibration (v1.4.0) via src/fair_config
 NDC_SCENARIO   = "REMIND-MAgPIE_3.3-4.8___Nationally_Determined_Contributions_NDCs"
 
 N_CP = len(pd.read_csv(PARAMS_FILE, index_col=0))   # 841 configs = effective independent n
@@ -128,7 +130,7 @@ fits = pd.DataFrame([
 fits.to_csv(os.path.join(OUT_DIR, "fig4_tableA_fits.csv"), index=False)
 
 # ── LaTeX (booktabs grid) ────────────────────────────────────────────────────────
-TIME_TO_ZERO = [100, 50, 33, 25, 20, 17, 14, 13, 11, 10]
+TIME_TO_ZERO = [time_to_net_zero_yr(rt) for rt in RATES]   # generated once (shared with 17)
 
 
 def _tex_cell(v):
@@ -222,8 +224,8 @@ for gain, conf_csv in [(0.01, CONF_1), (0.10, CONF_10)]:
         "baseline_resilience_pct": round(base * 100, 3),
         "gain_pp": round(float(rr["achieved_gain"]) * 100, 2),
         "resilience_after_pct": round(float(rr["achieved_resilience"]) * 100, 2),
-        "res_ci_low_pct": round(float(rr["ci_low"]) * 100, 2),
-        "res_ci_high_pct": round(float(rr["ci_high"]) * 100, 2),
+        "gain_ci_low_pct": round(float(rr["ci_low"]) * 100, 2),
+        "gain_ci_high_pct": round(float(rr["ci_high"]) * 100, 2),
     })
 
 gfp = pd.read_csv(CONF_GFP)
@@ -242,15 +244,15 @@ for gain in [0.01, 0.10]:
             "baseline_resilience_pct": round(base * 100, 3),
             "gain_pp": round(float(rr["achieved_gain"]) * 100, 2),
             "resilience_after_pct": round(float(rr["achieved_resilience"]) * 100, 2),
-            "res_ci_low_pct": round(float(rr["ci_low"]) * 100, 2),
-            "res_ci_high_pct": round(float(rr["ci_high"]) * 100, 2),
+            "gain_ci_low_pct": round(float(rr["ci_low"]) * 100, 2),
+            "gain_ci_high_pct": round(float(rr["ci_high"]) * 100, 2),
         })
 
 B = pd.DataFrame(rows)
 B.to_csv(os.path.join(OUT_DIR, "fig4_tableB_targets.csv"), index=False)
 
-_res_ci = [f"{a:.2f} [{lo:.2f}, {hi:.2f}]" for a, lo, hi in
-           zip(B["resilience_after_pct"], B["res_ci_low_pct"], B["res_ci_high_pct"])]
+_gain_ci = [f"{g:.2f} [{lo:.2f}, {hi:.2f}]" for g, lo, hi in
+            zip(B["gain_pp"], B["gain_ci_low_pct"], B["gain_ci_high_pct"])]
 B_md = pd.DataFrame({
     "Target [pp]": B["target_pp"],
     "Conditioning": B["conditioning"],
@@ -261,23 +263,24 @@ B_md = pd.DataFrame({
     "CO2 cut 2035 [GtCO2/yr]": [f"{v:.2f}" for v in B["co2_cut_2035_GtCO2_yr"]],
     "NDC CO2 2035 [GtCO2/yr]": [f"{v:.2f}" for v in B["ndc_co2_2035_GtCO2_yr"]],
     "Baseline res. [%]": [f"{v:.3f}" for v in B["baseline_resilience_pct"]],
-    "Gain [pp]": [f"{v:.2f}" for v in B["gain_pp"]],
-    "Resilience after cut [%] (95 % CI)": _res_ci,
+    "Gain [pp] (95 % CI)": _gain_ci,
+    "Resilience after cut [%]": [f"{v:.2f}" for v in B["resilience_after_pct"]],
 })
 with open(os.path.join(OUT_DIR, "fig4_tableB_targets.md"), "w") as fh:
     fh.write("## Table B — required reduction and confirmed resilience gain (Fig. 4b,c)\n\n")
     fh.write("R = additional reduction below the NDC baseline in 2035 (all emissions, same fraction "
-             "per species). Gain = confirmed path-based resilience gain (point estimate). "
-             "Resilience after cut = gain + baseline (0.135 %); its 95 % CI is the crossed-bootstrap "
-             "CI of the candidate resilience (stored ci_low/ci_high, not baseline-subtracted).\n\n")
+             "per species). Gain = confirmed path-based resilience gain (point estimate); its 95 % CI "
+             "is the crossed-bootstrap CI of the PAIRED candidate-minus-NDC difference (ci_low/ci_high, "
+             "from the same run). Resilience after cut = baseline + gain (point estimate).\n\n")
     fh.write(B_md.to_markdown(index=False) + "\n")
 
-# LaTeX (booktabs) — current Table B layout, CI column = candidate resilience CI
+# LaTeX (booktabs) — Table B layout; CI column = PAIRED candidate-minus-NDC gain CI.
+# Header order/alignment must match B_md.columns above.
 _hdr = ["Target [pp]", "Conditioning", "GFP", "mean GFP", "$n$", "$R$ [\\%]",
         "CO$_2$ cut 2035 [GtCO$_2$\\,yr$^{-1}$]", "NDC CO$_2$ 2035 [GtCO$_2$\\,yr$^{-1}$]",
-        "Baseline res.\\ [\\%]", "Gain [pp]", "Resilience after cut [\\%] (95\\,\\% CI)"]
+        "Baseline res.\\ [\\%]", "Gain [pp] (95\\,\\% CI)", "Resilience after cut [\\%]"]
 _Ltx = [r"\footnotesize", r"\setlength{\tabcolsep}{3.5pt}",
-        r"\begin{tabular}{@{}llrrrrrrrrl@{}}", r"\toprule",
+        r"\begin{tabular}{@{}llrrrrrrrlr@{}}", r"\toprule",
         " & ".join(_hdr) + r" \\", r"\midrule"]
 for _, rr in B_md.iterrows():
     vals = [str(rr[c]).replace("—", "--") for c in B_md.columns]

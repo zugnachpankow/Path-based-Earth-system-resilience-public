@@ -30,9 +30,6 @@ DATA_RAW = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "raw
 
 SRC_PARAMS = os.path.join(DATA_RAW, "calibrated_constrained_parameters.csv")
 SRC_CH4 = os.path.join(DATA_RAW, "CH4_lifetime.csv")
-# schema template: produce the same fair column layout as the 1.4.1 file, so the
-# two calibrations are drop-in interchangeable downstream.
-REF_141 = os.path.join(DATA_RAW, "calibrated_constrained_parameters_calibration1.4.1.csv")
 
 OUT_PARAMS = os.path.join(DATA_RAW, "calibrated_constrained_parameters_calibration1.4.0.csv")
 OUT_SPECIES = os.path.join(DATA_RAW, "species_configs_properties_calibration1.4.0.csv")
@@ -41,15 +38,43 @@ OUT_SPECIES_NGFS = os.path.join(DATA_RAW, "species_configs_properties_NGFS_calib
 EESC = "Equivalent effective stratospheric chlorine"
 
 # The 40 minor greenhouse gases that all share the single ``fscale_minorGHG``
-# scaling in the source file (order as in the reference 05 script).
+# scaling in the source file (order matches the fair-calibrate column layout).
 MINOR_GASES = [
     "CFC-11", "CFC-12", "CFC-113", "CFC-114", "CFC-115", "HCFC-22", "HCFC-141b",
     "HCFC-142b", "CCl4", "CHCl3", "CH2Cl2", "CH3Cl", "CH3CCl3", "CH3Br",
     "Halon-1211", "Halon-1301", "Halon-2402", "CF4", "C2F6", "C3F8", "c-C4F8",
     "C4F10", "C5F12", "C6F14", "C7F16", "C8F18", "NF3", "SF6", "SO2F2",
-    "HFC-125", "HFC-134a", "HFC-143a", "HFC-152a", "HFC-227ea", "HFC-23",
-    "HFC-236fa", "HFC-245fa", "HFC-32", "HFC-365mfc", "HFC-4310mee",
+    "HFC-125", "HFC-134a", "HFC-143a", "HFC-152a", "HFC-227ea", "HFC-32",
+    "HFC-365mfc", "HFC-4310mee", "HFC-23", "HFC-236fa", "HFC-245fa",
 ]
+
+# fair-format parameter columns in output order, EXCLUDING forcing_scale[Solar]
+# (v1.4.0 scales solar in the runner via the fscale_solar_* columns, appended after
+# these two extras). Hard-coded so 00b needs only the v1.4.0 source files -- no 1.4.1
+# template. This is the exact schema the pipeline's load_fair_params() expects.
+FAIR_PARAM_COLUMNS = (
+    ["gamma_autocorrelation"]
+    + [f"ocean_heat_capacity[{i}]" for i in range(3)]
+    + [f"ocean_heat_transfer[{i}]" for i in range(3)]
+    + ["deep_ocean_efficacy", "sigma_eta", "sigma_xi", "forcing_4co2"]
+    + ["iirf_0[CO2]", "iirf_uptake[CO2]", "iirf_temperature[CO2]", "iirf_airborne[CO2]"]
+    + [f"erfari_radiative_efficiency[{s}]"
+       for s in ["BC", "OC", "Sulfur", "NOx", "VOC", "NH3", "CH4", "N2O", EESC]]
+    + [f"aci_shape[{s}]" for s in ["Sulfur", "BC", "OC"]]
+    + ["aci_scale"]
+    + [f"ozone_radiative_efficiency[{s}]"
+       for s in ["CH4", "N2O", EESC, "CO", "VOC", "NOx"]]
+    + ["forcing_scale[CH4]", "forcing_scale[N2O]"]
+    + [f"forcing_scale[{g}]" for g in MINOR_GASES]
+    + ["forcing_scale[Stratospheric water vapour]", "forcing_scale[Land use]",
+       "forcing_scale[Volcanic]",
+       "forcing_scale[Light absorbing particles on snow and ice]",
+       "forcing_scale[CO2]"]
+    + ["baseline_concentration[CO2]", "seed", "stochastic_run", "use_seed"]
+)
+
+# non-fair columns consumed directly by the runner (src/fair_config) for solar scaling
+SOLAR_EXTRA_COLUMNS = ["fscale_solar_amplitude", "fscale_solar_trend"]
 
 # species dropped from the fair default (no contrails / no aviation NOx set)
 DROP_SPECIES = ["Halon-1202", "NOx aviation", "Contrails"]
@@ -134,26 +159,17 @@ def build_parameters():
     """Write the fair-format per-config parameter table for calibration v1.4.0."""
     src = pd.read_csv(SRC_PARAMS, index_col=0)
 
-    # target schema = the 1.4.1 fair columns, minus forcing_scale[Solar] (in
-    # v1.4.0 the solar forcing is scaled in the runner via the amplitude/trend
-    # columns, not via a per-specie forcing_scale), plus those two extra columns.
-    template = list(pd.read_csv(REF_141, index_col=0, nrows=0).columns)
-    template.remove("forcing_scale[Solar]")
-
     out = pd.DataFrame(index=src.index)
-    for col in template:
+    for col in FAIR_PARAM_COLUMNS:
         if col == "seed":
             out[col] = src["seed"].values
-        elif col == "stochastic_run":
-            out[col] = True
-        elif col == "use_seed":
+        elif col in ("stochastic_run", "use_seed"):
             out[col] = True
         else:
             out[col] = src[_source_column(col)].values
 
-    # extra (non-fair) columns consumed directly by the runner for solar scaling
-    out["fscale_solar_amplitude"] = src["fscale_solar_amplitude"].values
-    out["fscale_solar_trend"] = src["fscale_solar_trend"].values
+    for col in SOLAR_EXTRA_COLUMNS:
+        out[col] = src[col].values
 
     out.to_csv(OUT_PARAMS)
     return out

@@ -40,7 +40,7 @@ MAX_TRAJ = 800
 running_mean_temps = load_running_means()
 _, tipping_combined = load_tipping()
 rm_all = running_mean_temps[REP]
-tip_prob = tipping_combined["prob_any_tipping"].sel(scenario=REP).fillna(0.0)
+tip_prob = tipping_combined["prob_any_tipping"].sel(scenario=REP)  # no fillna(0): NaN-aware means below
 print(f"{REP}: rm {rm_all.sizes}", flush=True)
 
 fig = plt.figure(figsize=(TWO_COL, TWO_COL * 0.86))
