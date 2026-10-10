@@ -29,6 +29,7 @@ os.chdir(_HERE)
 
 from figures_common import (apply_style, TWO_COL, FIG_DIR, res_x, res_y, rate, rate_str,
                             FAIR_PARAMS_FILE, time_to_net_zero_yr)
+from scenario_ops import build_candidate_scenario   # SAME construction the calculator simulates
 
 apply_style()
 
@@ -133,29 +134,17 @@ def _build_candidate_co2(df_em, years_arr, year_cols, base_scen, target_year,
                          reduction_frac, region="World"):
     """CO2 (FFI+AFOLU) of the candidate ACTUALLY simulated by the calculator.
 
-    Mirrors calculator.build_candidate_scenario (ramped absolute offset subtracted
-    from the base, then ``min(base, max(reduced, floor))``) applied PER species and
-    summed -- not the old straight-line ramp on the CO2 total clipped at 0. The CO2
-    natural-background floor is 0, so net-negative AFOLU is held, never raised.
-    (Reimplemented inline to avoid importing the heavy calculator/pycascades stack
-    into this light figure script.)
+    Uses the SHARED build_candidate_scenario (src/scenario_ops) -- the very function
+    the calculator simulates -- so the plotted construction can never drift from the
+    simulated one. CO2's natural-background floor is 0 (net-negative AFOLU is held),
+    which baseline_map=None already gives, so the CO2 total is identical to the
+    full-floor run; other species are discarded by _co2_total.
     """
-    ramp_start = 2025.5
-    i_target  = int(np.argmin(np.abs(years_arr - target_year)))
-    ramp_mask = (years_arr >= ramp_start) & (years_arr <= target_year)
-    total = np.zeros(len(years_arr))
-    for var in ("CO2 FFI", "CO2 AFOLU"):
-        m = ((df_em["scenario"] == base_scen) & (df_em["region"] == region) &
-             (df_em["variable"] == var))
-        if not m.any():
-            continue
-        base = df_em.loc[m, year_cols].values.astype(float).ravel()
-        difference = base[i_target] * reduction_frac
-        offset = np.zeros(len(years_arr))
-        offset[ramp_mask] = np.linspace(0.0, difference, int(ramp_mask.sum()))
-        offset[years_arr > target_year] = difference
-        total += np.minimum(base, np.maximum(base - offset, 0.0))  # floor = 0 for CO2
-    return total / 1000.0  # Mt CO2/yr -> Gt CO2/yr
+    cand = build_candidate_scenario(
+        df_em, years_arr, year_cols, base_scen, target_year, reduction_frac,
+        candidate_name="_plot_candidate", baseline_map=None,
+    )
+    return _co2_total(cand, "_plot_candidate", year_cols, region)   # -> Gt CO2/yr
 
 
 def _write_ambition_stats(res_by_start, res_by_rate):
