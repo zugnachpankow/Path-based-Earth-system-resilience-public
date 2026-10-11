@@ -29,7 +29,6 @@ os.chdir(_HERE)
 
 from figures_common import (apply_style, TWO_COL, FIG_DIR, res_x, res_y, rate, rate_str,
                             FAIR_PARAMS_FILE, time_to_net_zero_yr)
-from scenario_ops import build_candidate_scenario   # SAME construction the calculator simulates
 
 apply_style()
 
@@ -130,21 +129,24 @@ def _co2_total(df_em, scenario, year_cols, region="World"):
     return df_em.loc[mask, year_cols].sum(axis=0).values.astype(float) / 1000.0
 
 
-def _build_candidate_co2(df_em, years_arr, year_cols, base_scen, target_year,
-                         reduction_frac, region="World"):
-    """CO2 (FFI+AFOLU) of the candidate ACTUALLY simulated by the calculator.
+_CONF_WS = "output/calculator/confirmator"
 
-    Uses the SHARED build_candidate_scenario (src/scenario_ops) -- the very function
-    the calculator simulates -- so the plotted construction can never drift from the
-    simulated one. CO2's natural-background floor is 0 (net-negative AFOLU is held),
-    which baseline_map=None already gives, so the CO2 total is identical to the
-    full-floor run; other species are discarded by _co2_total.
+
+def _confirmator_candidate_co2(gain, disp_cols, ty=2035, region="World"):
+    """CO2 (FFI+AFOLU) of the candidate that was ACTUALLY simulated, read from the
+    confirmator's per-candidate emissions.csv -- not reconstructed. Returns Gt CO2/yr
+    over ``disp_cols``.
     """
-    cand = build_candidate_scenario(
-        df_em, years_arr, year_cols, base_scen, target_year, reduction_frac,
-        candidate_name="_plot_candidate", baseline_map=None,
-    )
-    return _co2_total(cand, "_plot_candidate", year_cols, region)   # -> Gt CO2/yr
+    g = f"{gain:g}"   # 0.01 -> "0.01", 0.10 -> "0.1" (matches 14's gain<...> dir)
+    path = os.path.join(_CONF_WS, f"gain{g}", f"ty{int(ty)}", "emissions.csv")
+    if not os.path.exists(path):
+        raise FileNotFoundError(f"confirmator emissions not found: {path} "
+                                f"(run 14 in gain mode for gain {g})")
+    df = pd.read_csv(path)
+    cand = [s for s in df["scenario"].unique() if str(s).startswith("NDC_calc__")]
+    if len(cand) != 1:
+        raise ValueError(f"expected exactly 1 candidate scenario in {path}, found {cand}")
+    return _co2_total(df, cand[0], disp_cols, region)
 
 
 def _write_ambition_stats(res_by_start, res_by_rate):
@@ -193,11 +195,11 @@ def plot_calculator_combined(output_stem):
 
     r2035_row = results_1c5[results_1c5["target_year"].round(1) == 2035.5].iloc[0]
     R_2035    = float(r2035_row[REDUCTION_COL])
-    cand_vals = _build_candidate_co2(df_em, years_arr, year_cols, NDC_SCENARIO, 2035.5, R_2035)[disp_mask]
+    cand_vals = _confirmator_candidate_co2(0.01, disp_cols)
 
     r2035_10_row = results_10pct[results_10pct["target_year"].round(1) == 2035.5].iloc[0]
     R_2035_10    = float(r2035_10_row[REDUCTION_COL])
-    cand10_vals  = _build_candidate_co2(df_em, years_arr, year_cols, NDC_SCENARIO, 2035.5, R_2035_10)[disp_mask]
+    cand10_vals  = _confirmator_candidate_co2(0.10, disp_cols)
 
     color_left   = cmcs.glasgow(0.1)
     color_bottom = cmcs.glasgow(0.9)

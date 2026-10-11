@@ -123,7 +123,7 @@ if GFP_MODE:
             n_runs=N_FAIR_RUNS_FINAL, n_samples=N_TIPPING_SAMPLES_FINAL,
             temp_threshold=TEMP_THRESHOLD, rate_threshold=RATE_THRESHOLD,
             year_target=YEAR_TARGET, config_subset=cfg_subset,
-            lhs_params=lhs_params, extend=False,
+            lhs_params=lhs_params,
             return_bootstrap=True, paired_gain_bootstrap=False, n_bootstrap=N_BOOTSTRAP,
             candidate_name=f"NDC_calc__gfp_pct{pct:02d}_g{int(gain*100):02d}_r{red:.6f}",
         )
@@ -189,7 +189,7 @@ for ty, red in sorted(reductions.items()):
         PARAMS_FILE, SPECIES_FILE, iter_dir,
         n_runs=N_FAIR_RUNS_FINAL, n_samples=N_TIPPING_SAMPLES_FINAL,
         temp_threshold=TEMP_THRESHOLD, rate_threshold=RATE_THRESHOLD,
-        year_target=YEAR_TARGET, lhs_params=lhs_params, extend=False,
+        year_target=YEAR_TARGET, lhs_params=lhs_params,
         return_bootstrap=True, n_bootstrap=N_BOOTSTRAP,
         candidate_name=f"NDC_calc__ty{int(ty)}_r{red:.6f}",
     )

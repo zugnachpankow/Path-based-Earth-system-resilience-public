@@ -23,7 +23,7 @@ from tipping_params import sample_lhs_params
 
 # ── resilience defaults ──────────────────────────
 DEFAULT_TEMP_THRESHOLD = 1.5    # °C by year 2100
-DEFAULT_RATE_THRESHOLD = 0.04   # °C/yr (10-yr smoothed), 2000–2100
+DEFAULT_RATE_THRESHOLD = 0.04   # °C/yr (10-yr smoothed), [2000, 2096]
 DEFAULT_YEAR_TARGET    = 2100
 
 # fair time axis: must match the production NGFS runs (04_run_NGFS.py uses
@@ -48,56 +48,16 @@ n_jobs = int(os.environ.get("SLURM_CPUS_PER_TASK", len(os.sched_getaffinity(0)))
 # SCENARIO BUILDING
 # ══════════════════════════════════════════════════════════════════════════════
 
-def _extend_for_rolling_mean(df, year_cols, extensions_length=2,
-                              trend_start=2090.5, trend_end=2100.5):
-    """
-    Extend emissions DataFrame by `extensions_length` extra year columns beyond
-    trend_end, using a linear extrapolation fitted on [trend_start, trend_end].
-    """
-    years_arr = np.array([float(c) for c in year_cols])
-    idx_start = int(np.argmin(np.abs(years_arr - trend_start)))
-    idx_end   = int(np.argmin(np.abs(years_arr - trend_end)))
-    last_year = float(year_cols[idx_end])
-    extra_years = [last_year + 5 * (i + 1) for i in range(extensions_length)]
-    extra_cols  = [f"{y:.1f}" for y in extra_years]
-
-    new_rows = []
-    for _, row in df.iterrows():
-        vals = row[year_cols].astype(float).values
-        x    = years_arr[idx_start:idx_end + 1]
-        y    = vals[idx_start:idx_end + 1]
-        y_valid = y[np.isfinite(y)]
-        if len(y_valid) < 2:
-            y_extra = np.full(len(extra_years), y_valid[-1] if len(y_valid) else np.nan)
-        else:
-            a, b = np.polyfit(x, y, 1)
-            y_extra = a * np.array(extra_years) + b
-        y_extra = np.maximum(y_extra, 0.0)  # no negative emissions in extension
-        new_row = row.copy()
-        for col, val in zip(extra_cols, y_extra):
-            new_row[col] = val
-        new_rows.append(new_row)
-
-    return pd.DataFrame(new_rows)
-
-
 def write_mini_csvs(df_ndc_rows, df_candidate_rows, emissions_path, forcing_path,
-                    df_forcing_template, year_cols, extend=True):
+                    df_forcing_template, year_cols):
     """
-    Write a 2-scenario emissions CSV (extended to ~2110 for 20-yr rolling mean)
-    and matching forcing CSV for fair.
+    Write a 2-scenario emissions CSV and matching forcing CSV for fair.
     Copies Volcanic/Solar rows from df_forcing_template for any missing scenarios.
 
-    extend : if True (calculator default), linearly extrapolate two extra year
-             columns past 2100.5 so the 20-yr rolling mean is valid at 2100.
-             The cleaned pipeline's NGFS emissions are ALREADY extended to 2110.5
-             (real NGFS extension used by 04/08), so 12/13 pass extend=False to
-             avoid duplicating those columns / re-extrapolating.
+    The cleaned pipeline's NGFS emissions are ALREADY extended to 2110.5 (the real
+    NGFS extension used by 04/08), so no extra extrapolation is done here.
     """
     os.makedirs(os.path.dirname(emissions_path), exist_ok=True)
-    if extend:
-        df_ndc_rows  = _extend_for_rolling_mean(df_ndc_rows, year_cols)
-        df_candidate_rows = _extend_for_rolling_mean(df_candidate_rows, year_cols)
     df_mini = pd.concat([df_ndc_rows, df_candidate_rows], ignore_index=True)
     df_mini.to_csv(emissions_path, index=False)
 
@@ -461,8 +421,7 @@ def evaluate_candidate(reduction_frac, df_emissions, years, year_cols,
                        lhs_params=None,
                        return_bootstrap=False,
                        paired_gain_bootstrap=True,
-                       n_bootstrap=1000,
-                       extend=True):
+                       n_bootstrap=1000):
     """
     Evaluate one candidate reduction
 
@@ -516,7 +475,7 @@ def evaluate_candidate(reduction_frac, df_emissions, years, year_cols,
 
     # ── 2. write mini CSVs ───────────────────────────────────────────────────
     write_mini_csvs(df_base, df_candidate, emissions_path, forcing_path,
-                    df_forcing_template, year_cols, extend=extend)
+                    df_forcing_template, year_cols)
 
     # ── 3. run fair (deterministic single run when n_runs == 1) ──────────────
     monte_carlo_fair(

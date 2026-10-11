@@ -6,11 +6,13 @@ depends weakly on how long each scenario is evaluated, because the temperature c
 variability gives borderline members more chances to cross once over a longer window.
 
 Reports, per SSP, path-based resilience evaluated to the full trajectory vs cut at 2109,
-the difference (percentage points), and the climate-condition failure rate. Tipping is
-horizon-independent (committed), so the aggregated
-prob_any_tipping is used (linearity) — light compute; only the 31G running-mean pickle
-load is heavy, so submit via SLURM (run_25.sh). The formatted SI table itself is rebuilt
-from the cached horizon_validation.csv, so it can be regenerated on login.
+the difference (percentage points), and the climate-condition failure rate. Only the
+TEMPERATURE horizon (res_end) is varied here; tipping is held fixed at the main setting
+(the 50,000-yr any-time criterion, forcing held from each family's last valid year), so
+the same aggregated prob_any_tipping is reused for every horizon. Light compute; only the
+31G running-mean pickle load is heavy, so submit via SLURM (run_25.sh). The formatted SI
+table itself is rebuilt from the cached horizon_validation.csv, so it can be regenerated
+on login.
 
 Reads output/running_mean_temps.pkl (08) + output/tipping/*.nc (07).
 Writes output/resilience/horizon_validation.csv and
@@ -111,8 +113,10 @@ def build_si_table(df):
         f"once over a longer window. Comparing the full evaluation horizon "
         f"({'~%d' % horizon_end if horizon_end else 'full'}) with a cut at 2109 shifts path-based "
         f"resilience by at most {max_shift:.1f} percentage points, well within the "
-        f"crossed-bootstrap 95% confidence intervals (≈±2–3 pp). Tipping is treated as a "
-        f"committed, horizon-independent property."
+        f"crossed-bootstrap 95% confidence intervals (≈±2–3 pp). This horizon sensitivity "
+        f"concerns the TEMPERATURE condition only: tipping is held fixed at the main setting "
+        f"(the 50,000-yr any-time criterion, forcing held from each family's last valid year), "
+        f"so the same aggregated tipping probability is reused for every temperature horizon."
     )
     with open(md_path, "w") as fh:
         fh.write(caption + "\n\n")

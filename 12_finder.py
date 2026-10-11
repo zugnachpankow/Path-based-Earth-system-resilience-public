@@ -129,7 +129,7 @@ for ty in TARGET_YEARS:
             PARAMS_FILE, SPECIES_FILE, iter_dir,
             n_runs=N_FINDER_RUNS, n_samples=N_FINDER_SAMPLES,
             temp_threshold=TEMP_THRESHOLD, rate_threshold=RATE_THRESHOLD,
-            year_target=YEAR_TARGET, lhs_params=lhs_params, extend=False,
+            year_target=YEAR_TARGET, lhs_params=lhs_params,
             candidate_name=f"NDC_calc__ty{int(ty)}_r{R:.6f}",
         )
 
@@ -163,7 +163,7 @@ for ty in TARGET_YEARS:
             PARAMS_FILE, SPECIES_FILE, iter_dir,
             n_runs=N_FINDER_RUNS, n_samples=N_FINDER_SAMPLES,
             temp_threshold=TEMP_THRESHOLD, rate_threshold=RATE_THRESHOLD,
-            year_target=YEAR_TARGET, lhs_params=lhs_params, extend=False,
+            year_target=YEAR_TARGET, lhs_params=lhs_params,
             candidate_name=f"NDC_calc__ty{int(ty)}_r{mid:.6f}",
         )
         achieved_resilience = res["achieved_resilience"]

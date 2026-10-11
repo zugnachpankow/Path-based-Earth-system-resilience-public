@@ -122,7 +122,7 @@ def _bisect_subset(cfg_subset, gain, tag, lo, hi):
             n_runs=N_RUNS, n_samples=N_SAMPLES,
             temp_threshold=TEMP_THRESHOLD, rate_threshold=RATE_THRESHOLD,
             year_target=YEAR_TARGET, config_subset=cfg_subset,
-            lhs_params=lhs_params, extend=False,
+            lhs_params=lhs_params,
             candidate_name=f"NDC_calc__{tag}_r{R:.6f}",
         )
 

@@ -403,11 +403,11 @@ def compute_tip_prob(temperature_da, params, n_samples, configs, runs,
             temp = temp.values
 
             # Drop NaN before building the interpolant. The concatenated temperature
-            # spans the common horizon (SSPs to 2300, NGFS/branch-offs only to 2110),
-            # so shorter scenarios are NaN-padded to 2300 and even the SSPs carry a
-            # NaN at the final bound. With NaN in `temp`, fill_value=(temp[0], temp[-1])
-            # feeds NaN to the cascade for the long hold-out (t up to 15000) -> the
-            # whole integration becomes NaN and NO element ever registers as tipped.
+            # spans the common horizon (SSPs and branch-offs to ~2300, NGFS only to
+            # ~2110), so shorter scenarios are NaN-padded to 2300 and even the SSPs
+            # carry a NaN at the final bound. With NaN in `temp`, fill_value=(temp[0],
+            # temp[-1]) feeds NaN to the cascade for the long hold-out (t up to T_END)
+            # -> the whole integration becomes NaN and NO element ever registers tipped.
             # Using only valid points holds the last *valid* committed temperature.
             valid = ~np.isnan(temp)
             time = time[valid]

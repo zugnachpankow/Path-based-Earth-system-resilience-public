@@ -71,7 +71,7 @@ def _row(row_i, res_y_c, rate_c, letter, subtitle):
         ("C", "R"): resilient.sum().item() / resilient.size,
         ("C", "T"): (no_climate * no_tipping).mean().item(),
         ("R", "T"): (no_rate * no_tipping).mean().item(),
-        ("C", "R", "T"): res_with_tip.sum().item() / res_with_tip.size,
+        ("C", "R", "T"): float(res_with_tip.mean()),   # NaN-aware (skips failed tipping solves)
     }
 
     # ── trajectory panel ──

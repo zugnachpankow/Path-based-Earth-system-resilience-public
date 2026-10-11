@@ -53,7 +53,7 @@ tipping = load_tipping(TIPPING_DIR)                        # {scenario: Dataset}
 results = {}
 for sc in tqdm(SSPS, desc="coarse grid"):
     rm = compute_running_means(temperature, [sc])[sc]
-    tip_prob = tipping[sc]["prob_any_tipping"].fillna(0.0)
+    tip_prob = tipping[sc]["prob_any_tipping"]   # no fillna(0): NaN-aware mean in resilience_index
     grid = []
     for rx, ry, r in itertools.product(RES_X_VALS, RES_Y_VALS, RATE_VALS):
         val = resilience_index(rm, int(rx), float(ry), float(r), True, tip_prob)
