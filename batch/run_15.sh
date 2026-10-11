@@ -16,4 +16,5 @@ echo "SLURM JOB ID: $SLURM_JOBID  |  $SLURM_CPUS_PER_TASK cpus/task"
 echo "------------------------------------------------------------"
 module load anaconda/2025
 source activate fair
+mkdir -p logs/other logs/tipping
 python 15_figures_main.py

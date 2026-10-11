@@ -96,7 +96,10 @@ assert_configs_match_ensemble()   # params file must match the ensemble's config
 _, gf_scores = compute_fragility_masks(all_configs, PARAMS_FILE)
 print(f"GFP scores for {len(gf_scores)} configs (range [{gf_scores.min():.3f}, {gf_scores.max():.3f}])", flush=True)
 
-lhs_params = sample_lhs_params(n_samples=N_TIPPING_SAMPLES_FINAL)
+# separate 100-point Latin hypercube for the finder (not the first 100 rows of the
+# 1000-sample LHS); different fixed seed. The confirmator (14) uses the full 1000.
+FINDER_LHS_SEED = 4321
+lhs_params = sample_lhs_params(n_samples=N_SAMPLES, seed=FINDER_LHS_SEED)
 
 # ── resume ──────────────────────────────────────────────────────────────────────
 if os.path.exists(OUTPUT_CSV):
@@ -125,14 +128,14 @@ def _bisect_subset(cfg_subset, gain, tag, lo, hi):
 
     # bracket-sign check (ported from 12): the monotone gain(R) must straddle the
     # target gain across [lo, hi]; else widen to [0, 0.99]; else raise.
-    g_lo = _eval(lo, "bracket_lo")["achieved_gain"]
-    g_hi = _eval(hi, "bracket_hi")["achieved_gain"]
+    g_lo = _eval(lo, "bracket_lo")["achieved_resilience"] - baseline_resilience
+    g_hi = _eval(hi, "bracket_hi")["achieved_resilience"] - baseline_resilience
     if not gain_brackets_target(g_lo, g_hi, gain):
         print(f"    [warn] bracket [{lo:.4f},{hi:.4f}] gains ({g_lo:.4f},{g_hi:.4f}) do not "
               f"straddle target {gain}; widening to [0, 0.99]", flush=True)
         lo, hi = 0.0, 0.99
-        g_lo = _eval(lo, "bracket_lo_wide")["achieved_gain"]
-        g_hi = _eval(hi, "bracket_hi_wide")["achieved_gain"]
+        g_lo = _eval(lo, "bracket_lo_wide")["achieved_resilience"] - baseline_resilience
+        g_hi = _eval(hi, "bracket_hi_wide")["achieved_resilience"] - baseline_resilience
         if not gain_brackets_target(g_lo, g_hi, gain):
             raise RuntimeError(
                 f"target gain {gain} not bracketed on [0, 0.99] for {tag} "
@@ -143,7 +146,7 @@ def _bisect_subset(cfg_subset, gain, tag, lo, hi):
     for it in range(MAX_ITER):
         mid = 0.5 * (lo + hi)
         res = _eval(mid, f"iter_{it:02d}")
-        gain_now = res["achieved_gain"]   # paired candidate - NDC from the same run
+        gain_now = res["achieved_resilience"] - baseline_resilience   # vs full-ensemble 09 baseline
         if gain_now < gain:
             lo = mid
         else:
@@ -183,7 +186,7 @@ for pct in PERCENTILES:
             "n_configs": len(cfg_subset),
             "gain_target": gain,
             "reduction_frac": red,
-            "achieved_gain": res["achieved_gain"] if res else np.nan,       # paired
+            "achieved_gain": res["achieved_resilience"] - baseline_resilience if res else np.nan,   # vs 09 baseline
             "ndc_resilience": res["ndc_resilience"] if res else np.nan,     # cross-check
             "co2_GtCO2": res["co2_GtCO2"] if res else np.nan,
         })

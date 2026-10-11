@@ -19,6 +19,7 @@ echo "------------------------------------------------------------"
 
 module load anaconda/2025
 source activate fair
+mkdir -p logs/other logs/tipping
 
 # SI diagnostic: GFP construction quality (PCA loadings/variance, GFP vs warming/ECS).
 # over the shared LHS + a few plots; light-moderate (tipping load dominates).

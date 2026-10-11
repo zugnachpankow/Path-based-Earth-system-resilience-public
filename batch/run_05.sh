@@ -18,5 +18,6 @@ echo "------------------------------------------------------------"
 
 module load anaconda/2025
 source activate fair
+mkdir -p logs/other logs/tipping
 
 python 05_run_branchoffs.py

@@ -15,5 +15,6 @@ echo "SLURM JOB ID: $SLURM_JOBID  |  $SLURM_CPUS_PER_TASK cpus/task"
 echo "------------------------------------------------------------"
 module load anaconda/2025
 source activate fair
+mkdir -p logs/other logs/tipping
 # only 2035.5 is shown in the calculator figure (panel b); other target years skipped
 python 14_confirmator.py 0.01 2035.5

@@ -17,5 +17,6 @@ echo "------------------------------------------------------------"
 
 module load anaconda/2025
 source activate fair
+mkdir -p logs/other logs/tipping
 
 python si/24_figures_si_os_sensitivity.py

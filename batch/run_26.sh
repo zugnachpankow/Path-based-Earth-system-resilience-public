@@ -19,6 +19,7 @@ echo "------------------------------------------------------------"
 
 module load anaconda/2025
 source activate fair
+mkdir -p logs/other logs/tipping
 
 # SI diagnostic: tipping-susceptibility PCA + RF quality. One RF fit per main scenario
 # over the shared LHS + a few plots; light-moderate (tipping load dominates).

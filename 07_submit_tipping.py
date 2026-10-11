@@ -27,6 +27,10 @@ print(f"Scenarios to run: {scenarios_to_run}", flush=True)
 
 scenarios = scenarios_to_run
 
+# ensure the SLURM log dir exists before the per-scenario jobs start (their
+# #SBATCH --output=logs/tipping/... is opened at job start, not submit time).
+os.makedirs(os.path.join(repo, "logs", "tipping"), exist_ok=True)
+
 for scenario in scenarios:
     #iniate job script
     with open("job_submit.sh", "w+") as fh:

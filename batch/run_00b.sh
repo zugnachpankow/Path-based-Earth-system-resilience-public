@@ -19,5 +19,6 @@ echo "------------------------------------------------------------"
 
 module load anaconda/2025
 source activate fair
+mkdir -p logs/other logs/tipping
 
 python 00b_build_fair_v140_inputs.py

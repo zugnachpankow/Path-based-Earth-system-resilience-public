@@ -232,7 +232,7 @@ def compute_resilience_scalar(run_mean_temp, prob_any_tipping,
 
     climate_violation = (rm.sel(timebounds=slice(year_target, None)) > temp_threshold).any("timebounds")
     rate_of_change    = rm.diff("timebounds").rolling(timebounds=10, center=True).mean()
-    rate_violation    = (rate_of_change.sel(timebounds=slice(2000, year_target)) > rate_threshold).any("timebounds")
+    rate_violation    = (rate_of_change.sel(timebounds=slice(2000, 2096)) > rate_threshold).any("timebounds")
 
     binary_resilient = ~(climate_violation | rate_violation)
     binary_resilient = binary_resilient.unstack("member").astype(float)  # (run, config)
@@ -287,7 +287,7 @@ def resilience_tensor(run_mean_temp, prob_any_tipping_sample,
     rm = run_mean_temp
     climate_violation = (rm.sel(timebounds=slice(year_target, None)) > temp_threshold).any("timebounds")
     rate_of_change    = rm.diff("timebounds").rolling(timebounds=10, center=True).mean()
-    rate_violation    = (rate_of_change.sel(timebounds=slice(2000, year_target)) > rate_threshold).any("timebounds")
+    rate_violation    = (rate_of_change.sel(timebounds=slice(2000, 2096)) > rate_threshold).any("timebounds")
 
     binary_resilient = ~(climate_violation | rate_violation)
     binary_resilient = binary_resilient.unstack("member").astype(float)  # (run, config)
@@ -460,6 +460,7 @@ def evaluate_candidate(reduction_frac, df_emissions, years, year_cols,
                        candidate_name=None,
                        lhs_params=None,
                        return_bootstrap=False,
+                       paired_gain_bootstrap=True,
                        n_bootstrap=1000,
                        extend=True):
     """
@@ -585,10 +586,20 @@ def evaluate_candidate(reduction_frac, df_emissions, years, year_cols,
     }
 
     if return_bootstrap:
-        result["bootstrap"] = compute_gain_bootstrap(
-            rm_cand, pas_cand, rm_base, pas_base,
-            temp_threshold, rate_threshold, year_target,
-            config_subset=config_subset, n_bootstrap=n_bootstrap,
-        )
+        if paired_gain_bootstrap:
+            # gain mode: CI of the PAIRED candidate-minus-NDC difference (same run)
+            result["bootstrap"] = compute_gain_bootstrap(
+                rm_cand, pas_cand, rm_base, pas_base,
+                temp_threshold, rate_threshold, year_target,
+                config_subset=config_subset, n_bootstrap=n_bootstrap,
+            )
+        else:
+            # gfp mode: CI of the CANDIDATE's resilience (the caller subtracts the
+            # full-ensemble 09 baseline point estimate to get the gain CI)
+            result["bootstrap"] = compute_resilience_with_bootstrap(
+                rm_cand, pas_cand,
+                temp_threshold, rate_threshold, year_target,
+                config_subset=config_subset, n_bootstrap=n_bootstrap,
+            )
 
     return result

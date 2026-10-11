@@ -19,5 +19,6 @@ echo "------------------------------------------------------------"
 
 module load anaconda/2025
 source activate fair
+mkdir -p logs/other logs/tipping
 
 python 00a_clean_NGFS_IAM.py

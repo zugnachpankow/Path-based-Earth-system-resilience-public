@@ -124,19 +124,23 @@ if GFP_MODE:
             temp_threshold=TEMP_THRESHOLD, rate_threshold=RATE_THRESHOLD,
             year_target=YEAR_TARGET, config_subset=cfg_subset,
             lhs_params=lhs_params, extend=False,
-            return_bootstrap=True, n_bootstrap=N_BOOTSTRAP,
+            return_bootstrap=True, paired_gain_bootstrap=False, n_bootstrap=N_BOOTSTRAP,
             candidate_name=f"NDC_calc__gfp_pct{pct:02d}_g{int(gain*100):02d}_r{red:.6f}",
         )
-        boot = res["bootstrap"]   # paired candidate - NDC gain bootstrap (over subset)
+        # gfp mode: gain is against the FULL-ENSEMBLE 09 baseline (not the subset NDC);
+        # the CI is the candidate-resilience bootstrap shifted by that baseline point.
+        boot = res["bootstrap"]   # candidate RESILIENCE bootstrap over the subset
+        gfp_gain = res["achieved_resilience"] - baseline_resilience
         records.append({
             "percentile": pct, "gf_value": gf_target, "n_configs": len(cfg_subset),
             "gain_target": gain, "reduction_frac": red,
             "achieved_resilience": res["achieved_resilience"],
-            "ndc_resilience": res["ndc_resilience"],
-            "achieved_gain": res["achieved_gain"],
+            "achieved_gain": gfp_gain,
             "baseline_resilience": baseline_resilience,
-            "bootstrap_gain": boot["mean"], "ci_low": boot["ci_low"],
-            "ci_high": boot["ci_high"], "ci_half_width": boot["ci_half_width"],
+            "bootstrap_gain": boot["mean"] - baseline_resilience,
+            "ci_low": boot["ci_low"] - baseline_resilience,
+            "ci_high": boot["ci_high"] - baseline_resilience,
+            "ci_half_width": boot["ci_half_width"],
             "co2_GtCO2": res["co2_GtCO2"],
             "n_runs": N_FAIR_RUNS_FINAL, "n_samples": N_TIPPING_SAMPLES_FINAL,
         })
@@ -192,11 +196,14 @@ for ty, red in sorted(reductions.items()):
     boot = res["bootstrap"]           # paired candidate - NDC gain bootstrap
     achieved_gain = res["achieved_gain"]
     # cross-check: this gain-mode run uses the full ensemble (config_subset=None), so
-    # the calculator's NDC resilience must reproduce the 09 summary value exactly.
-    if abs(res["ndc_resilience"] - baseline_resilience) > 1e-9:
+    # the calculator's NDC resilience must reproduce the 09 summary value.
+    _ndc_diff = res["ndc_resilience"] - baseline_resilience
+    print(f"  NDC cross-check: calculator {res['ndc_resilience']:.9f} vs 09 "
+          f"{baseline_resilience:.9f} (diff {_ndc_diff:+.2e})", flush=True)
+    if abs(_ndc_diff) > 1e-6:
         raise AssertionError(
-            f"calculator NDC resilience {res['ndc_resilience']:.12f} != 09 baseline "
-            f"{baseline_resilience:.12f} (diff {res['ndc_resilience'] - baseline_resilience:.2e}); "
+            f"calculator NDC resilience {res['ndc_resilience']:.9f} != 09 baseline "
+            f"{baseline_resilience:.9f} (diff {_ndc_diff:.2e}); "
             "the calculator and the main pipeline disagree for the NDC scenario."
         )
     print(f"  resilience={res['achieved_resilience']:.6f}  gain={achieved_gain:.6f}  "

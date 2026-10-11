@@ -49,13 +49,18 @@ tipping_sample_dict = load_tipping(TIPPING_DIR)
 SOLVER_REPORT = join(TIPPING_DIR, "solver_report.csv")
 solver_report_df = None
 if os.path.exists(SOLVER_REPORT):
-    solver_report_df = pd.read_csv(SOLVER_REPORT)
-    n_fail_total = int(solver_report_df["n_solver_failures"].sum())
-    if n_fail_total > 0:
-        bad = solver_report_df[solver_report_df["n_solver_failures"] > 0]
+    _raw = pd.read_csv(SOLVER_REPORT)
+    # drop any repeated header line read as data, coerce counts to numbers, and keep
+    # one row per scenario (the max over appended rows — a worst-case view).
+    _raw = _raw[_raw["scenario"] != "scenario"].copy()
+    for _c in ("n_solver_failures", "n_tip_final_disagreements"):
+        _raw[_c] = pd.to_numeric(_raw[_c], errors="coerce").fillna(0).astype(int)
+    solver_report_df = _raw.groupby("scenario", as_index=False).max()
+    bad = solver_report_df[solver_report_df["n_solver_failures"] > 0]
+    if not bad.empty:
         raise RuntimeError(
-            f"{n_fail_total} failed tipping solves in {SOLVER_REPORT}; refusing to "
-            f"process. Offending scenarios:\n{bad.to_string(index=False)}"
+            f"failed tipping solves in {SOLVER_REPORT}; refusing to process. "
+            f"Offending scenarios:\n{bad.to_string(index=False)}"
         )
     print(f"Solver report OK: 0 failures across {len(solver_report_df)} scenarios.")
 else:

@@ -1,27 +1,33 @@
+import glob
 import os
 from os.path import join
 import xarray as xr
 
 base_path = "output"
+N_RUNS = 100   # per family (matches n_runs in 03/04/05)
+
+
+def _run_files(path):
+    """Sorted run_*.nc under ``path``; assert exactly N_RUNS so a partial/failed
+    ensemble can never be silently concatenated (globs run_*.nc, not every file)."""
+    files = sorted(glob.glob(join(path, "run_*.nc")))
+    if len(files) != N_RUNS:
+        raise AssertionError(f"expected {N_RUNS} run_*.nc in {path}, found {len(files)}")
+    return files
+
 
 ngfs_path = join(base_path, "runs_ngfs")
-ngfs_run_files = sorted(
-    os.path.join(ngfs_path, f) for f in os.listdir(ngfs_path)
-)
+ngfs_run_files = _run_files(ngfs_path)
 ngfs_datasets = (xr.open_dataset(f) for f in ngfs_run_files)
 ngfs_results = xr.concat(ngfs_datasets, dim="run")
 
 ssp_path = join(base_path, "runs_ssp")
-ssp_run_files = sorted(
-    os.path.join(ssp_path, f) for f in os.listdir(ssp_path)
-)
+ssp_run_files = _run_files(ssp_path)
 ssp_datasets = (xr.open_dataset(f) for f in ssp_run_files)
 ssp_results = xr.concat(ssp_datasets, dim="run")
 
 branch_off_path = join(base_path, "runs_branchoffs")
-branch_off_run_files = sorted(
-    os.path.join(branch_off_path, f) for f in os.listdir(branch_off_path)
-)
+branch_off_run_files = _run_files(branch_off_path)
 branch_off_datasets = (xr.open_dataset(f) for f in branch_off_run_files)
 branch_off_results = xr.concat(branch_off_datasets, dim="run")
 

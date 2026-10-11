@@ -269,12 +269,14 @@ B_md = pd.DataFrame({
 with open(os.path.join(OUT_DIR, "fig4_tableB_targets.md"), "w") as fh:
     fh.write("## Table B — required reduction and confirmed resilience gain (Fig. 4b,c)\n\n")
     fh.write("R = additional reduction below the NDC baseline in 2035 (all emissions, same fraction "
-             "per species). Gain = confirmed path-based resilience gain (point estimate); its 95 % CI "
-             "is the crossed-bootstrap CI of the PAIRED candidate-minus-NDC difference (ci_low/ci_high, "
-             "from the same run). Resilience after cut = baseline + gain (point estimate).\n\n")
+             "per species). Gain and its 95 % CI are both against the SAME full-ensemble NDC baseline "
+             "from 09: for 'all configs' rows the gain is the paired candidate-minus-NDC difference from "
+             "the same run; for the GFP-window rows it is the candidate resilience minus the full NDC "
+             "baseline, and the CI is the candidate's crossed-bootstrap CI shifted by that baseline. "
+             "Resilience after cut = baseline + gain (point estimate).\n\n")
     fh.write(B_md.to_markdown(index=False) + "\n")
 
-# LaTeX (booktabs) — Table B layout; CI column = PAIRED candidate-minus-NDC gain CI.
+# LaTeX (booktabs) — Table B layout; CI column = gain CI (vs the full-ensemble 09 baseline).
 # Header order/alignment must match B_md.columns above.
 _hdr = ["Target [pp]", "Conditioning", "GFP", "mean GFP", "$n$", "$R$ [\\%]",
         "CO$_2$ cut 2035 [GtCO$_2$\\,yr$^{-1}$]", "NDC CO$_2$ 2035 [GtCO$_2$\\,yr$^{-1}$]",

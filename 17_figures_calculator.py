@@ -317,6 +317,9 @@ def plot_calculator_combined(output_stem):
         _m = ((df_em["scenario"] == NDC_SCENARIO) & (df_em["region"] == "World") &
               (df_em["variable"] == _v))
         _co2_2035[_v] = float(df_em.loc[_m, "2035.5"].sum()) / 1000.0 if _m.any() else 0.0
+    _afolu = _co2_2035.get("CO2 AFOLU", 0.0)
+    print(f"[M10] NDC CO2 AFOLU 2035.5 = {_afolu:+.3f} GtCO2/yr "
+          f"({'NEGATIVE -> excluded from reducible total' if _afolu < 0 else 'positive'})", flush=True)
     _ndc2035 = sum(v for v in _co2_2035.values() if v > 0)   # GtCO2, reducible only
     _secax = ax_c.secondary_yaxis("right", functions=(lambda p: p / 100.0 * _ndc2035,
                                                       lambda g: g / _ndc2035 * 100.0))

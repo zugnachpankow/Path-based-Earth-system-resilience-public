@@ -37,7 +37,7 @@ TARGET_GAIN     = float(sys.argv[1]) if len(sys.argv) > 1 else 0.01
 TEMP_THRESHOLD  = 1.5
 RATE_THRESHOLD  = 0.04
 YEAR_TARGET     = 2100
-TARGET_YEARS    = [2025.5, 2030.5, 2035.5, 2040.5]
+TARGET_YEARS    = [2030.5, 2035.5, 2040.5]
 
 BASE_SCENARIO       = "REMIND-MAgPIE_3.3-4.8___Nationally_Determined_Contributions_(NDCs)"
 BASE_SCENARIO_CLEAN = BASE_SCENARIO.replace("(", "").replace(")", "")
@@ -100,10 +100,12 @@ year_cols = [c for c in df_emissions.columns if c.replace(".", "", 1).isdigit()]
 years = np.array([float(c) for c in year_cols])
 df_forcing = pd.read_csv(FORCING_FILE)
 
-# LHS tipping params drawn once at full size; evaluate_candidate uses the first
-# N_FINDER_SAMPLES (matches the calculator's "generate max, use a slice").
+# Separate 100-point Latin hypercube for the finder (NOT the first 100 rows of the
+# 1000-sample LHS, which is not itself a Latin hypercube). Different fixed seed from
+# the main run's 1234; the confirmator (14) still uses the full 1000-sample LHS.
+FINDER_LHS_SEED = 4321
 assert_configs_match_ensemble()   # params file must match the ensemble's config set
-lhs_params = sample_lhs_params(n_samples=N_TIPPING_SAMPLES_FINAL)
+lhs_params = sample_lhs_params(n_samples=N_FINDER_SAMPLES, seed=FINDER_LHS_SEED)
 
 # ── bisection per target year ─────────────────────────────────────────────────────
 # Seed the bracket from the old converged reductions wherever we have them (+1% and

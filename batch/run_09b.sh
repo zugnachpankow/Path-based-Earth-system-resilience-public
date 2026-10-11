@@ -19,6 +19,7 @@ echo "------------------------------------------------------------"
 
 module load anaconda/2025
 source activate fair
+mkdir -p logs/other logs/tipping
 
 # hierarchical bootstrap CIs for the UpSet bars. Each tipping-tensor bootstrap is
 # ~400s (4 per scenario x 4 scenarios ~= 2h) + a 31G running-mean pickle load, so:

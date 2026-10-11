@@ -87,6 +87,6 @@ md = md[["name", "family", "Path-based resilience [%]",
 md_path = os.path.join(OUT_DIR, "main_resilience_table.md")
 md.to_markdown(md_path, index=False)
 print(f"Wrote {md_path}", flush=True)
-print(f"\nCriterion: {res_y} °C by {res_x}, rate 0.{rate_str} °C/decade, incl. tipping "
+print(f"\nCriterion: {res_y} °C by {res_x}, rate 0.{rate_str} °C/yr, incl. tipping "
       f"| Clopper–Pearson N={N_CP}")
 print(md.to_string(index=False))

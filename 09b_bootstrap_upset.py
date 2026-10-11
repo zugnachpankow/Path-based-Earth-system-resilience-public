@@ -147,7 +147,7 @@ for SCENARIO in SCENARIOS:
     climate_viol = (rm.sel(timebounds=slice(res_x, None)) > res_y).any(dim="timebounds")
     rate_viol    = (rm.diff(dim="timebounds")
                       .rolling(timebounds=10, center=True).mean()
-                      .sel(timebounds=slice(2000, res_x)) > rate
+                      .sel(timebounds=slice(2000, 2096)) > rate
                    ).any(dim="timebounds")
 
     no_climate_da    = (~climate_viol).astype(float).set_index(member=["config", "run"]).unstack("member")

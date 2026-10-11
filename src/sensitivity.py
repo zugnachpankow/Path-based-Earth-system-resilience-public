@@ -30,7 +30,7 @@ def resilience_index(rm, res_x, res_y, rate, tipping_switch, tip_prob):
 
     rate_of_change = rm.diff("timebounds").rolling(timebounds=10, center=True).mean()
     rate_violation = (
-        rate_of_change.sel(timebounds=slice(2000, res_x)) > rate
+        rate_of_change.sel(timebounds=slice(2000, 2096)) > rate
     ).any(dim="timebounds")
 
     binary_resilient = ~(climate_violation | rate_violation)

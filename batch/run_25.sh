@@ -17,6 +17,7 @@ echo "------------------------------------------------------------"
 
 module load anaconda/2025
 source activate fair
+mkdir -p logs/other logs/tipping
 
 # SSP resilience: full horizon (2300) vs cut (2109) vs old. Light compute; the 31G
 # running-mean pickle load is the only heavy part -> single task, large mem.

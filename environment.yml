@@ -22,6 +22,7 @@ dependencies:
   - pip
   - pip:
       - pycascades==1.0.2  # tipping-cascade model
+      - sdeint==0.3.0      # SDE integrator required by pycascades
       - scikit-learn==1.8.0
       - SALib==1.5.2       # Sobol sampling/analysis (sensitivity)
       - pyDOE==0.3.8       # Latin-hypercube sampling (tipping ensemble)
