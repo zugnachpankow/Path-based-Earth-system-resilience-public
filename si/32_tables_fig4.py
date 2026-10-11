@@ -8,14 +8,17 @@ Table A (panel a): current-policies branch-off grid (start year × decarbonisati
   and the decarb-rate linear fit reported ONLY as a diagnostic (the rate marginal
   is non-linear / saturating).
 
-Table B (panels b, c): one row per target (+1, +10 pp) × conditioning (all 841
-  configs; GFP 10/30/50/70/90th). Columns: GFP target value, window mean GFP,
-  n configs, R [% below NDC baseline 2035, all emissions], CO2 cut in 2035
-  [GtCO2/yr], NDC baseline CO2 in 2035 [GtCO2/yr], baseline resilience [%],
-  confirmed gain [pp], 95% CI [pp].
+Table B (panel b + SI): one row per target (+1, +10 pp) × conditioning (all 841
+  configs; TCRE 10/30/50/70/90th percentile windows, ±10pp). Columns: TCRE target
+  value, window mean TCRE, n configs, R [% below NDC baseline 2035, all emissions],
+  CO2 cut in 2035 [GtCO2/yr], NDC baseline CO2 in 2035 [GtCO2/yr], baseline
+  resilience [%], confirmed gain [pp], 95% CI [pp].
+
+Table C (panel c): the Fig-4c 3×3 grid — required cut over TCRE × T_eff terciles,
+  +10 pp target, from 14 grid mode (with not-reachable / met-at-NDC flags).
 
 Reads stored outputs only (no reruns). Light — runs on login.
-Output -> output/tables/fig4_tableA_branchoffs.{csv,md}, fig4_tableB_targets.{csv,md}
+Output -> output/tables/fig4_table{A_branchoffs, B_targets, C_grid}.{csv,md}
 """
 import os
 import re
@@ -29,7 +32,6 @@ from statsmodels.stats.proportion import proportion_confint
 _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(_HERE, "..", "src"))
 os.chdir(os.path.join(_HERE, ".."))
-from calculator import compute_fragility_masks
 from fair_config import FAIR_PARAMS
 from figures_common import time_to_net_zero_yr
 
@@ -37,9 +39,12 @@ OUT_DIR = os.path.join("tables"); os.makedirs(OUT_DIR, exist_ok=True)
 
 SUMMARY_CSV = ("output/resilience/resilience_conditions_time2100_temp1.5_rate04/"
                "summary/resilience_summary_time2100_temp1.5_rate04.csv")
-CONF_1   = "output/calculator/confirmator/confirmed_results_gain0.01.csv"
-CONF_10  = "output/calculator/confirmator/confirmed_results_gain0.1.csv"
-CONF_GFP = "output/calculator/confirmator/confirmed_gfp_percentile.csv"
+CONF_1    = "output/calculator/confirmator/confirmed_results_gain0.01.csv"
+CONF_10   = "output/calculator/confirmator/confirmed_results_gain0.1.csv"
+CONF_TCRE = "output/calculator/confirmator/confirmed_tcre_windows.csv"
+CONF_GRID = "output/calculator/confirmator/confirmed_grid.csv"
+TCRE_CSV  = "output/feedback/tcre.csv"
+TCRE_HALFWIDTH = 10.0   # ± window half-width in TCRE-percentile points (matches 13/14)
 EMISSIONS_FILE = "data/processed/NGFS_historic_merged_extended_to_2110.csv"
 PARAMS_FILE    = FAIR_PARAMS   # single calibration (v1.4.0) via src/fair_config
 NDC_SCENARIO   = "REMIND-MAgPIE_3.3-4.8___Nationally_Determined_Contributions_NDCs"
@@ -190,7 +195,7 @@ print(f"[Table A] {len(A)} branch-offs | start-year {s.slope:.3f} pp/yr "
       f"rate {r.slope:.3f} pp per %/yr R2={r.rvalue**2:.4f} (diagnostic)", flush=True)
 
 
-# ── Table B: targets × conditioning ─────────────────────────────────────────────
+# ── Table B: targets × conditioning (all configs + TCRE percentile windows, SI) ──
 def _ndc_co2_2035():
     em = pd.read_csv(EMISSIONS_FILE)
     m = ((em["scenario"].str.replace("(", "", regex=False).str.replace(")", "", regex=False) == NDC_SCENARIO)
@@ -200,15 +205,13 @@ def _ndc_co2_2035():
 
 ndc_co2_2035 = _ndc_co2_2035()
 
-# window mean GFP per percentile (PCA; deterministic)
-cfg = pd.read_csv(PARAMS_FILE, index_col=0)
-_, gf = compute_fragility_masks(cfg.index.tolist(), PARAMS_FILE)
-HALFWIDTH = 0.10
+# window mean TCRE per percentile (±10pp in TCRE percentile-rank space; matches 13/14)
+tcre = pd.read_csv(TCRE_CSV, index_col="config")["TCRE"]
+tcre_rank = tcre.rank(pct=True) * 100.0
 win_mean = {}
 for pct in [10, 30, 50, 70, 90]:
-    t = np.percentile(gf.values, pct)
-    mask = (gf >= t - HALFWIDTH) & (gf <= t + HALFWIDTH)
-    win_mean[pct] = float(gf[mask].mean())
+    mask = (tcre_rank >= pct - TCRE_HALFWIDTH) & (tcre_rank <= pct + TCRE_HALFWIDTH)
+    win_mean[pct] = float(tcre[mask].mean())
 
 rows = []
 for gain, conf_csv in [(0.01, CONF_1), (0.10, CONF_10)]:
@@ -217,7 +220,7 @@ for gain, conf_csv in [(0.01, CONF_1), (0.10, CONF_10)]:
     base = float(rr["baseline_resilience"])
     rows.append({
         "target_pp": int(gain * 100), "conditioning": "all configs",
-        "gfp_target": np.nan, "window_mean_gfp": np.nan, "n_configs": N_CP,
+        "tcre_target": np.nan, "window_mean_tcre": np.nan, "n_configs": N_CP, "status": "ok",
         "R_pct": round(float(rr["reduction_frac"]) * 100, 1),
         "co2_cut_2035_GtCO2_yr": round(float(rr["co2_GtCO2"]) / 1000.0, 2),
         "ndc_co2_2035_GtCO2_yr": round(ndc_co2_2035, 2),
@@ -228,16 +231,16 @@ for gain, conf_csv in [(0.01, CONF_1), (0.10, CONF_10)]:
         "gain_ci_high_pct": round(float(rr["ci_high"]) * 100, 2),
     })
 
-gfp = pd.read_csv(CONF_GFP)
+tcw = pd.read_csv(CONF_TCRE)
 for gain in [0.01, 0.10]:
-    sub = gfp[gfp["gain_target"] == gain].sort_values("percentile")
+    sub = tcw[tcw["gain_target"] == gain].sort_values("percentile")
     for _, rr in sub.iterrows():
         base = float(rr["baseline_resilience"]); pct = int(rr["percentile"])
         rows.append({
-            "target_pp": int(gain * 100), "conditioning": f"GFP {pct}th",
-            "gfp_target": round(float(rr["gf_value"]), 4),
-            "window_mean_gfp": round(win_mean[pct], 4),
-            "n_configs": int(rr["n_configs"]),
+            "target_pp": int(gain * 100), "conditioning": f"TCRE {pct}th",
+            "tcre_target": round(float(rr["tcre_value"]), 4),
+            "window_mean_tcre": round(win_mean[pct], 4),
+            "n_configs": int(rr["n_configs"]), "status": str(rr["finder_status"]),
             "R_pct": round(float(rr["reduction_frac"]) * 100, 1),
             "co2_cut_2035_GtCO2_yr": round(float(rr["co2_GtCO2"]) / 1000.0, 2),
             "ndc_co2_2035_GtCO2_yr": round(ndc_co2_2035, 2),
@@ -251,13 +254,19 @@ for gain in [0.01, 0.10]:
 B = pd.DataFrame(rows)
 B.to_csv(os.path.join(OUT_DIR, "fig4_tableB_targets.csv"), index=False)
 
+# M1 check: resilience after cut == full baseline + gain (point estimate), for every row.
+# For the TCRE-window rows this is exact (unpaired gain); for 'all configs' it holds within
+# the NDC cross-check tolerance (paired gain vs the same-run NDC == 09 baseline).
+_resid = (B["baseline_resilience_pct"] + B["gain_pp"] - B["resilience_after_pct"]).abs()
+print(f"[M1] max |baseline + gain - after| = {_resid.max():.4f} pp (expect ~0)", flush=True)
+
 _gain_ci = [f"{g:.2f} [{lo:.2f}, {hi:.2f}]" for g, lo, hi in
             zip(B["gain_pp"], B["gain_ci_low_pct"], B["gain_ci_high_pct"])]
 B_md = pd.DataFrame({
     "Target [pp]": B["target_pp"],
     "Conditioning": B["conditioning"],
-    "GFP": [("—" if np.isnan(v) else f"{v:.3f}") for v in B["gfp_target"]],
-    "mean GFP": [("—" if np.isnan(v) else f"{v:.3f}") for v in B["window_mean_gfp"]],
+    "TCRE": [("—" if np.isnan(v) else f"{v:.3f}") for v in B["tcre_target"]],
+    "mean TCRE": [("—" if np.isnan(v) else f"{v:.3f}") for v in B["window_mean_tcre"]],
     "n": B["n_configs"],
     "R [%]": [f"{v:.1f}" for v in B["R_pct"]],
     "CO2 cut 2035 [GtCO2/yr]": [f"{v:.2f}" for v in B["co2_cut_2035_GtCO2_yr"]],
@@ -267,18 +276,18 @@ B_md = pd.DataFrame({
     "Resilience after cut [%]": [f"{v:.2f}" for v in B["resilience_after_pct"]],
 })
 with open(os.path.join(OUT_DIR, "fig4_tableB_targets.md"), "w") as fh:
-    fh.write("## Table B — required reduction and confirmed resilience gain (Fig. 4b,c)\n\n")
+    fh.write("## Table B — required reduction and confirmed resilience gain (Fig. 4b; TCRE windows = SI)\n\n")
     fh.write("R = additional reduction below the NDC baseline in 2035 (all emissions, same fraction "
              "per species). Gain and its 95 % CI are both against the SAME full-ensemble NDC baseline "
              "from 09: for 'all configs' rows the gain is the paired candidate-minus-NDC difference from "
-             "the same run; for the GFP-window rows it is the candidate resilience minus the full NDC "
-             "baseline, and the CI is the candidate's crossed-bootstrap CI shifted by that baseline. "
+             "the same run; for the TCRE-window rows it is the candidate resilience minus the full NDC "
+             "baseline, with an unpaired crossed-bootstrap CI of that difference. "
              "Resilience after cut = baseline + gain (point estimate).\n\n")
     fh.write(B_md.to_markdown(index=False) + "\n")
 
 # LaTeX (booktabs) — Table B layout; CI column = gain CI (vs the full-ensemble 09 baseline).
 # Header order/alignment must match B_md.columns above.
-_hdr = ["Target [pp]", "Conditioning", "GFP", "mean GFP", "$n$", "$R$ [\\%]",
+_hdr = ["Target [pp]", "Conditioning", "TCRE", "mean TCRE", "$n$", "$R$ [\\%]",
         "CO$_2$ cut 2035 [GtCO$_2$\\,yr$^{-1}$]", "NDC CO$_2$ 2035 [GtCO$_2$\\,yr$^{-1}$]",
         "Baseline res.\\ [\\%]", "Gain [pp] (95\\,\\% CI)", "Resilience after cut [\\%]"]
 _Ltx = [r"\footnotesize", r"\setlength{\tabcolsep}{3.5pt}",
@@ -293,3 +302,31 @@ with open(os.path.join(OUT_DIR, "fig4_tableB_targets.tex"), "w") as fh:
 
 print(f"[Table B] {len(B)} rows | NDC CO2 2035 = {ndc_co2_2035:.2f} GtCO2/yr", flush=True)
 print("\nTable B:\n", B.to_string(index=False), flush=True)
+
+
+# ── Table C: Fig-4c grid — 3×3 TCRE × T_eff, +10 pp target ───────────────────────
+C = pd.read_csv(CONF_GRID)
+C_out = pd.DataFrame({
+    "TCRE tercile": C["tcre_tercile"],
+    "TCRE range [K/1000PgC]": [f"{lo:.2f}–{hi:.2f}" for lo, hi in zip(C["tcre_lo"], C["tcre_hi"])],
+    "T_eff tercile": C["teff_tercile"],
+    "T_eff range [°C]": [f"{lo:.2f}–{hi:.2f}" for lo, hi in zip(C["teff_lo"], C["teff_hi"])],
+    "n cfg × samp": [f"{c}×{s}" for c, s in zip(C["n_configs"], C["n_samples"])],
+    "status": C["finder_status"],
+    "R [%]": [f"{v*100:.1f}" for v in C["reduction_frac"]],
+    "CO2 cut 2035 [GtCO2/yr]": [f"{v/1000.0:.2f}" for v in C["co2_GtCO2"]],
+    "Gain [pp] (95 % CI)": [f"{g*100:.2f} [{lo*100:.2f}, {hi*100:.2f}]"
+                            for g, lo, hi in zip(C["achieved_gain"], C["ci_low"], C["ci_high"])],
+    "Resilience after [%]": [f"{v*100:.2f}" for v in C["achieved_resilience"]],
+})
+C_out.to_csv(os.path.join(OUT_DIR, "fig4_tableC_grid.csv"), index=False)
+_res_c = (C["baseline_resilience"] + C["achieved_gain"] - C["achieved_resilience"]).abs()
+print(f"[Table C / M1] max |baseline + gain - after| = {_res_c.max()*100:.4f} pp (expect ~0)", flush=True)
+with open(os.path.join(OUT_DIR, "fig4_tableC_grid.md"), "w") as fh:
+    fh.write("## Table C — Fig. 4c grid: required NDC-2035 cut over TCRE × T_eff terciles (+10 pp)\n\n")
+    fh.write("Each cell: TCRE tercile (841 configs) × T_eff tercile (1000-sample set). R = additional "
+             "NDC-2035 cut; gain = cell path-based resilience minus the full-ensemble NDC baseline (09), "
+             "with an unpaired crossed-bootstrap 95 % CI. `max_cut_insufficient` = +10 pp unreachable "
+             "even at a 99 % cut (R reported at 0.99); `met_at_ndc` = already met at the NDC (R=0).\n\n")
+    fh.write(C_out.to_markdown(index=False) + "\n")
+print(f"[Table C] {len(C_out)} grid cells written", flush=True)

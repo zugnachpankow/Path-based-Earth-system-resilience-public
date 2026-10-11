@@ -5,7 +5,7 @@ monolith, this consumes the cleaned pipeline's PRE-COMPUTED outputs instead of
 recomputing them:
   * running means   -> output/running_mean_temps.pkl        (08)
   * tipping         -> output/tipping/*.nc                   (07)
-  * GFP / ECS / T   -> output/feedback/df_params_all.pkl     (11)
+  * ECS / T@2100    -> output/feedback/df_params_all.pkl     (11; slim: scenario,config,run,ecs,temp)
   * Sobol           -> output/sensitivity/sobol_*.pkl        (10; optional)
   * resilience      -> output/resilience/.../summary/*.csv   (09)
 
@@ -16,7 +16,7 @@ are available.
 Figures produced:
   * C1 — trajectories + UpSet, per main scenario × 3 criterion sets (plain and
     ECS-coloured variant; the NZ2050 ECS variant also carries the 3-SSP Sobol panel c).
-  (The GFP × tipping heatmap is a separate figure — see 16_figures_heatmap.py.)
+  (The TCRE × T_eff resilience heatmap is a separate figure — see 16_figures_heatmap.py.)
 """
 import os
 import sys

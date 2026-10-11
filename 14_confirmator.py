@@ -1,20 +1,28 @@
-"""14_confirmator.py — full-resolution confirmation of ALL finder reductions.
+"""14_confirmator.py — full-resolution confirmation of the finder reductions.
 
-Confirms the finder outputs at full resolution — 100 FAIR Monte Carlo runs +
-1000-sample tipping + crossed bootstrap CI — the publishable numbers.
+Confirms finder outputs at full resolution — 100 FAIR Monte Carlo runs + 1000-sample
+tipping + crossed bootstrap CI — the publishable numbers.
 
 Modes (positional arg):
-    python 14_confirmator.py 0.01          # confirm 12_finder +1% (per target year)
-    python 14_confirmator.py 0.10          # confirm 12_finder +10%
+    python 14_confirmator.py 0.01          # confirm 12_finder +1pp (per target year)
+    python 14_confirmator.py 0.10          # confirm 12_finder +10pp
     python 14_confirmator.py 0.10 2035.5   # just one target year
-    python 14_confirmator.py gfp           # confirm 13_gfp_percentile (per pct × gain)
+    python 14_confirmator.py grid          # confirm 13_fragility_finder grid (Fig 4c 3×3)
+    python 14_confirmator.py tcre          # confirm 13_fragility_finder tcre windows (SI)
 
-Gain modes are resumable per target year (per-year CSVs). GFP mode is resumable per
-(percentile, gain). Heavy -> submit via SLURM.
+Fragility modes (grid/tcre) confirm each cell/window at its finder R* over the cell's
+configs (TCRE tercile/window, from 841) × the cell's T_eff tercile of the 1000-sample
+set (grid) or all samples (tcre). The gain is vs the 09 full-ensemble NDC PERI and its
+CI is an UNPAIRED crossed bootstrap of (cell PERI − full NDC PERI). Cells whose finder
+status is "max_cut_insufficient" are confirmed at R=0.99 and additionally report the
+minimum CO2 FFI / AFOLU over 2035–2100 (to confirm the emission floor binds).
+
+Gain modes are resumable per target year; fragility modes per cell/window. Heavy -> SLURM.
 
 Outputs (output/calculator/confirmator/):
     confirmed_results_gain<G>.csv          # gain modes
-    confirmed_gfp_percentile.csv           # gfp mode
+    confirmed_grid.csv                     # grid mode
+    confirmed_tcre_windows.csv             # tcre mode
 """
 import os
 import sys
@@ -28,7 +36,7 @@ sys.path.insert(0, os.path.join(_HERE, "src"))
 os.chdir(_HERE)
 
 from calculator import (
-    evaluate_candidate, compute_fragility_masks, assert_configs_match_ensemble,
+    evaluate_candidate, assert_configs_match_ensemble, cell_vs_full_gain_bootstrap,
     N_FAIR_RUNS_FINAL, N_TIPPING_SAMPLES_FINAL,
 )
 from tipping_params import sample_lhs_params
@@ -36,8 +44,8 @@ from fair_config import FAIR_PARAMS, SPECIES_CONFIGS_NGFS
 
 # ── mode (positional) ─────────────────────────────────────────────────────────────
 _mode = sys.argv[1] if len(sys.argv) > 1 else "0.01"
-GFP_MODE = (_mode == "gfp")
-TARGET_GAIN = 0.01 if GFP_MODE else float(_mode)
+FRAGILITY_MODE = _mode in ("grid", "tcre")
+TARGET_GAIN = None if FRAGILITY_MODE else float(_mode)
 _REQUESTED_YEARS = [float(a) for a in sys.argv[2:]]  # gain mode only
 
 # ── configuration (keep in sync with 12/13) ───────────────────────────────────────
@@ -54,10 +62,12 @@ PARAMS_FILE    = FAIR_PARAMS            # single calibration (v1.4.0) via src/fa
 SPECIES_FILE   = SPECIES_CONFIGS_NGFS
 WORKSPACE      = "output/calculator/confirmator"
 
-# GFP-mode settings (must match 13_gfp_percentile.py)
-GFP_FINDER_CSV = "output/calculator/gfp_percentile/gfp_percentile_results.csv"
-GFP_TARGET_YEAR = 2035.5
-GFP_HALFWIDTH       = 0.10
+# fragility-mode settings (must match 13_fragility_finder.py)
+FRAG_TARGET_YEAR = 2035.5
+GRID_FINDER_CSV  = "output/calculator/fragility_finder/grid_results.csv"
+TCRE_FINDER_CSV  = "output/calculator/fragility_finder/tcre_window_results.csv"
+TERCILE_Q = [100.0 / 3.0, 200.0 / 3.0]
+MAX_CUT_R = 0.99
 
 N_BOOTSTRAP = 1000
 os.makedirs(WORKSPACE, exist_ok=True)
@@ -86,74 +96,157 @@ lhs_params = sample_lhs_params(n_samples=N_TIPPING_SAMPLES_FINAL)
 
 
 # ══════════════════════════════════════════════════════════════════════════════════
-# GFP mode — confirm each (percentile, gain) reduction over its config subset
+# Fragility modes (grid / tcre) — confirm 13's cells/windows at full resolution
 # ══════════════════════════════════════════════════════════════════════════════════
-if GFP_MODE:
-    if not os.path.exists(GFP_FINDER_CSV):
-        raise FileNotFoundError(f"GFP finder output not found: {GFP_FINDER_CSV} (run 13 first).")
-    gfp = pd.read_csv(GFP_FINDER_CSV)
+if FRAGILITY_MODE:
+    tcre = pd.read_csv("output/feedback/tcre.csv", index_col="config")["TCRE"]
+    teff_1000 = pd.read_csv("output/feedback/t_eff_lhs1000.csv", index_col="sample")["T_eff"]
+    tcre_bounds = np.percentile(tcre.values, TERCILE_Q)
+    teff_bounds = np.nanpercentile(teff_1000.values, TERCILE_Q)
+    teff_tier_1000 = np.digitize(teff_1000.values, teff_bounds)   # per 1000-sample
+    TERCILES = ["low", "medium", "high"]
 
-    df_configs = pd.read_csv(PARAMS_FILE, index_col=0)
-    _, gf_scores = compute_fragility_masks(df_configs.index.tolist(), PARAMS_FILE)
+    co2_year_cols = [c for c in year_cols if 2035.0 <= float(c) <= 2100.0]
 
-    out_csv = os.path.join(WORKSPACE, "confirmed_gfp_percentile.csv")
-    done = set()
-    records = []
-    if os.path.exists(out_csv):
-        prev = pd.read_csv(out_csv)
-        records = prev.to_dict("records")
-        done = set(zip(prev["percentile"], prev["gain_target"]))
+    def _min_floor_co2(iter_dir, candidate_name):
+        """Min CO2 FFI and CO2 AFOLU (World) over 2035–2100 for the candidate (floor check)."""
+        em = pd.read_csv(os.path.join(iter_dir, "emissions.csv"))
+        cand = em[(em["scenario"] == candidate_name) & (em["region"] == "World")]
+        out = {}
+        for var in ("CO2 FFI", "CO2 AFOLU"):
+            v = cand[cand["variable"] == var][co2_year_cols]
+            out[var] = float(v.values.min()) if not v.empty else np.nan
+        return out["CO2 FFI"], out["CO2 AFOLU"]
 
-    for _, r in gfp.sort_values(["gain_target", "percentile"]).iterrows():
-        pct = int(r["percentile"]); gain = round(float(r["gain_target"]), 2)
-        red = float(r["reduction_frac"])
-        if (pct, gain) in done:
-            print(f"[cache] pct={pct} gain={gain} — skip", flush=True)
-            continue
-        gf_target = float(np.percentile(gf_scores.values, pct))
-        mask = (gf_scores >= gf_target - GFP_HALFWIDTH) & (gf_scores <= gf_target + GFP_HALFWIDTH)
-        cfg_subset = gf_scores[mask].index.tolist()
-        print(f"\n══ confirm pct={pct} gain={gain} R={red:.4f} | {len(cfg_subset)} configs "
-              f"({N_FAIR_RUNS_FINAL} runs × {N_TIPPING_SAMPLES_FINAL} samples) ══", flush=True)
-        iter_dir = os.path.join(WORKSPACE, "gfp", f"pct{pct:02d}_gain{int(gain*100):02d}")
-        res = evaluate_candidate(
-            red, df_emissions, years, year_cols,
-            BASE_SCENARIO, GFP_TARGET_YEAR, df_forcing,
-            PARAMS_FILE, SPECIES_FILE, iter_dir,
-            n_runs=N_FAIR_RUNS_FINAL, n_samples=N_TIPPING_SAMPLES_FINAL,
-            temp_threshold=TEMP_THRESHOLD, rate_threshold=RATE_THRESHOLD,
-            year_target=YEAR_TARGET, config_subset=cfg_subset,
-            lhs_params=lhs_params,
-            return_bootstrap=True, paired_gain_bootstrap=False, n_bootstrap=N_BOOTSTRAP,
-            candidate_name=f"NDC_calc__gfp_pct{pct:02d}_g{int(gain*100):02d}_r{red:.6f}",
-        )
-        # gfp mode: gain is against the FULL-ENSEMBLE 09 baseline (not the subset NDC);
-        # the CI is the candidate-resilience bootstrap shifted by that baseline point.
-        boot = res["bootstrap"]   # candidate RESILIENCE bootstrap over the subset
-        gfp_gain = res["achieved_resilience"] - baseline_resilience
-        records.append({
-            "percentile": pct, "gf_value": gf_target, "n_configs": len(cfg_subset),
-            "gain_target": gain, "reduction_frac": red,
-            "achieved_resilience": res["achieved_resilience"],
-            "achieved_gain": gfp_gain,
-            "baseline_resilience": baseline_resilience,
-            "bootstrap_gain": boot["mean"] - baseline_resilience,
-            "ci_low": boot["ci_low"] - baseline_resilience,
-            "ci_high": boot["ci_high"] - baseline_resilience,
-            "ci_half_width": boot["ci_half_width"],
-            "co2_GtCO2": res["co2_GtCO2"],
-            "n_runs": N_FAIR_RUNS_FINAL, "n_samples": N_TIPPING_SAMPLES_FINAL,
-        })
-        done.add((pct, gain))
-        pd.DataFrame(records).to_csv(out_csv, index=False)  # incremental
-        print(f"  confirmed pct={pct} gain={gain}: gain={records[-1]['achieved_gain']:.5f}", flush=True)
+    # full-ensemble NDC resilience tensor at full resolution (R=0, no subsets) — the
+    # reference for every cell's unpaired gain bootstrap; also cross-checks the 09 value.
+    base = evaluate_candidate(
+        0.0, df_emissions, years, year_cols, BASE_SCENARIO, FRAG_TARGET_YEAR, df_forcing,
+        PARAMS_FILE, SPECIES_FILE, os.path.join(WORKSPACE, _mode, "baseline_full"),
+        n_runs=N_FAIR_RUNS_FINAL, n_samples=N_TIPPING_SAMPLES_FINAL,
+        temp_threshold=TEMP_THRESHOLD, rate_threshold=RATE_THRESHOLD, year_target=YEAR_TARGET,
+        lhs_params=lhs_params, return_tensors=True, candidate_name="NDC_calc__baseline_full",
+    )
+    T_full = base["T_ndc"]
+    _ndc_diff = base["ndc_resilience"] - baseline_resilience
+    print(f"NDC cross-check: calculator {base['ndc_resilience']:.9f} vs 09 "
+          f"{baseline_resilience:.9f} (diff {_ndc_diff:+.2e})", flush=True)
+    if abs(_ndc_diff) > 1e-6:
+        raise AssertionError("calculator NDC resilience != 09 baseline (see cross-check above).")
 
-    print(f"\nGFP confirmation complete -> {out_csv}")
-    sys.exit(0)
+    if _mode == "grid":
+        if not os.path.exists(GRID_FINDER_CSV):
+            raise FileNotFoundError(f"grid finder output not found: {GRID_FINDER_CSV} (run 13 grid first).")
+        fin = pd.read_csv(GRID_FINDER_CSV)
+        out_csv = os.path.join(WORKSPACE, "confirmed_grid.csv")
+        done, records = set(), []
+        if os.path.exists(out_csv):
+            prev = pd.read_csv(out_csv); records = prev.to_dict("records")
+            done = set(zip(prev["tcre_tercile"], prev["teff_tercile"]))
+
+        for _, r in fin.iterrows():
+            ci = TERCILES.index(r["tcre_tercile"]); sj = TERCILES.index(r["teff_tercile"])
+            if (r["tcre_tercile"], r["teff_tercile"]) in done:
+                print(f"[cache] {r['tcre_tercile']}×{r['teff_tercile']} — skip", flush=True)
+                continue
+            R = MAX_CUT_R if r["status"] == "max_cut_insufficient" else float(r["reduction_frac"])
+            cfg_subset = tcre.index[np.digitize(tcre.values, tcre_bounds) == ci].tolist()
+            samp_subset = np.nonzero(teff_tier_1000 == sj)[0]
+            tag = f"tcre{ci}_teff{sj}"
+            iter_dir = os.path.join(WORKSPACE, "grid", tag)
+            cand_name = f"NDC_calc__grid_{tag}_r{R:.6f}"
+            print(f"\n══ confirm TCRE {r['tcre_tercile']} × T_eff {r['teff_tercile']} "
+                  f"R={R:.4f} status={r['status']} | {len(cfg_subset)} cfg × {len(samp_subset)} samp ══", flush=True)
+            res = evaluate_candidate(
+                R, df_emissions, years, year_cols, BASE_SCENARIO, FRAG_TARGET_YEAR, df_forcing,
+                PARAMS_FILE, SPECIES_FILE, iter_dir,
+                n_runs=N_FAIR_RUNS_FINAL, n_samples=N_TIPPING_SAMPLES_FINAL,
+                temp_threshold=TEMP_THRESHOLD, rate_threshold=RATE_THRESHOLD, year_target=YEAR_TARGET,
+                config_subset=cfg_subset, sample_subset=samp_subset, lhs_params=lhs_params,
+                return_tensors=True, candidate_name=cand_name,
+            )
+            boot = cell_vs_full_gain_bootstrap(res["T_cand"], T_full, B=N_BOOTSTRAP)
+            gain = res["achieved_resilience"] - baseline_resilience
+            rec = {
+                "tcre_tercile": r["tcre_tercile"], "teff_tercile": r["teff_tercile"],
+                "tcre_lo": r["tcre_lo"], "tcre_hi": r["tcre_hi"],
+                "teff_lo": r["teff_lo"], "teff_hi": r["teff_hi"],
+                "n_configs": len(cfg_subset), "n_samples": int(len(samp_subset)),
+                "finder_status": r["status"], "reduction_frac": R,
+                "achieved_resilience": res["achieved_resilience"], "achieved_gain": gain,
+                "baseline_resilience": baseline_resilience,
+                "bootstrap_gain": boot["mean"], "ci_low": boot["ci_low"],
+                "ci_high": boot["ci_high"], "ci_half_width": boot["ci_half_width"],
+                "co2_GtCO2": res["co2_GtCO2"],
+                "n_runs": N_FAIR_RUNS_FINAL, "n_samples_full": res["n_samples"],
+            }
+            if r["status"] == "max_cut_insufficient":
+                ffi, afolu = _min_floor_co2(iter_dir, cand_name)
+                rec["min_co2_ffi_2035_2100"] = ffi
+                rec["min_co2_afolu_2035_2100"] = afolu
+                print(f"  R=0.99 floor check: min CO2 FFI={ffi:.1f}, AFOLU={afolu:.1f} (MtCO2/yr)", flush=True)
+            records.append(rec)
+            done.add((r["tcre_tercile"], r["teff_tercile"]))
+            pd.DataFrame(records).to_csv(out_csv, index=False)
+            print(f"  gain={gain:.5f} [{boot['ci_low']:.5f}, {boot['ci_high']:.5f}]", flush=True)
+        print(f"\nGrid confirmation complete -> {out_csv}")
+        sys.exit(0)
+
+    else:  # tcre windows
+        if not os.path.exists(TCRE_FINDER_CSV):
+            raise FileNotFoundError(f"tcre finder output not found: {TCRE_FINDER_CSV} (run 13 tcre first).")
+        fin = pd.read_csv(TCRE_FINDER_CSV)
+        tcre_rank = tcre.rank(pct=True) * 100.0
+        TCRE_HALFWIDTH = 10.0
+        out_csv = os.path.join(WORKSPACE, "confirmed_tcre_windows.csv")
+        done, records = set(), []
+        if os.path.exists(out_csv):
+            prev = pd.read_csv(out_csv); records = prev.to_dict("records")
+            done = set(zip(prev["percentile"], prev["gain_target"]))
+
+        for _, r in fin.sort_values(["gain_target", "percentile"]).iterrows():
+            pct = int(r["percentile"]); gain_t = round(float(r["gain_target"]), 2)
+            if (pct, gain_t) in done:
+                print(f"[cache] pct={pct} gain={gain_t} — skip", flush=True)
+                continue
+            R = MAX_CUT_R if r["status"] == "max_cut_insufficient" else float(r["reduction_frac"])
+            mask = (tcre_rank >= pct - TCRE_HALFWIDTH) & (tcre_rank <= pct + TCRE_HALFWIDTH)
+            cfg_subset = tcre.index[mask].tolist()
+            tag = f"pct{pct:02d}_gain{int(gain_t*100):02d}"
+            iter_dir = os.path.join(WORKSPACE, "tcre", tag)
+            cand_name = f"NDC_calc__tcre_{tag}_r{R:.6f}"
+            print(f"\n══ confirm TCRE pct={pct} gain={gain_t} R={R:.4f} status={r['status']} | "
+                  f"{len(cfg_subset)} configs ══", flush=True)
+            res = evaluate_candidate(
+                R, df_emissions, years, year_cols, BASE_SCENARIO, FRAG_TARGET_YEAR, df_forcing,
+                PARAMS_FILE, SPECIES_FILE, iter_dir,
+                n_runs=N_FAIR_RUNS_FINAL, n_samples=N_TIPPING_SAMPLES_FINAL,
+                temp_threshold=TEMP_THRESHOLD, rate_threshold=RATE_THRESHOLD, year_target=YEAR_TARGET,
+                config_subset=cfg_subset, lhs_params=lhs_params,
+                return_tensors=True, candidate_name=cand_name,
+            )
+            boot = cell_vs_full_gain_bootstrap(res["T_cand"], T_full, B=N_BOOTSTRAP)
+            gain = res["achieved_resilience"] - baseline_resilience
+            rec = {
+                "percentile": pct, "tcre_value": r["tcre_value"], "n_configs": len(cfg_subset),
+                "gain_target": gain_t, "finder_status": r["status"], "reduction_frac": R,
+                "achieved_resilience": res["achieved_resilience"], "achieved_gain": gain,
+                "baseline_resilience": baseline_resilience,
+                "bootstrap_gain": boot["mean"], "ci_low": boot["ci_low"],
+                "ci_high": boot["ci_high"], "ci_half_width": boot["ci_half_width"],
+                "co2_GtCO2": res["co2_GtCO2"],
+                "n_runs": N_FAIR_RUNS_FINAL, "n_samples": res["n_samples"],
+            }
+            records.append(rec)
+            done.add((pct, gain_t))
+            pd.DataFrame(records).to_csv(out_csv, index=False)
+            print(f"  gain={gain:.5f} [{boot['ci_low']:.5f}, {boot['ci_high']:.5f}]", flush=True)
+        print(f"\nTCRE-window confirmation complete -> {out_csv}")
+        sys.exit(0)
 
 
 # ══════════════════════════════════════════════════════════════════════════════════
-# Gain mode — confirm the main finder reductions per target year
+# Gain mode — confirm the main finder (12) reductions per target year
 # ══════════════════════════════════════════════════════════════════════════════════
 FINDER_CSV = f"output/calculator/finder/finder_results_gain{TARGET_GAIN}.csv"
 if not os.path.exists(FINDER_CSV):

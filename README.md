@@ -31,7 +31,7 @@ This project quantifies the **path-based resilience** given a climate mitigation
 - **Rate** — the warming rate never exceeds a threshold (default 0.4 °C per decade);
 - **Tipping** — weighted by the committed probability of triggering a tipping cascade (GIS / THC / WAIS / AMAZ).
 
-The pipeline also provides a Sobol/Monte-Carlo sensitivity analysis of the criterion parameters, a generalised feedback parameter (GFP) view, and an "ambition calculator" translating a target resilience gain into required emission cuts (example figure below).
+The pipeline also provides a Sobol/Monte-Carlo sensitivity analysis of the criterion parameters, an Earth-system fragility view (TCRE × effective tipping temperature), and an "ambition calculator" translating a target resilience gain into required emission cuts (example figure below).
 
 ![Emission "ambition calculator": required additional NDC reduction for a target path-based resilience gain.](figures/example/calculator_combined.png)
 
@@ -40,7 +40,7 @@ The pipeline also provides a Sobol/Monte-Carlo sensitivity analysis of the crite
 - Large fair (2.2.3) Monte-Carlo ensemble over calibrated-constrained climate configurations
 - Pycascades tipping-cascade probabilities (cusp elements) via Latin-hypercube sampling
 - Sobol + Latin-hypercube sensitivity analysis of the resilience criterion
-- Diagnostics of resilience depending on Earth system feedbacks and tipping susceptibility
+- Diagnostics of resilience vs Earth-system fragility (TCRE and effective tipping temperature)
 - Emission "ambition calculator" (required NDC reduction for a target resilience gain)
 - Publication-quality figure and table scripts
 - Designed to run on a workstation or an HPC/SLURM cluster
@@ -59,9 +59,9 @@ root; supplementary scripts and the SLURM batch scripts live in subfolders.
 | Preprocess | `08` | 20-yr running-mean temperatures |
 | Resilience | `09`, `09b` | path-based resilience + bootstrap CIs; UpSet-bar CIs |
 | Sensitivity | `10` | Sobol + Monte-Carlo over the criterion parameters |
-| Feedback/tipping | `11` | GFP, ECS, random-forest tipping susceptibility |
-| Calculator | `12`–`14` | resilience "ambition calculator" |
-| Main figures | `15`–`17` | trajectories + UpSet; GFP×tipping heatmap; calculator figure |
+| Feedback/tipping | `11` | TCRE per config, effective tipping temperature T_eff per LHS sample, SI climate-feedback PCA (κ1, ε) |
+| Calculator | `12`–`14` | resilience "ambition calculator" (`13_fragility_finder.py` grid+tcre modes; `14` gain/grid/tcre modes) |
+| Main figures | `15`–`17` | trajectories + UpSet; TCRE×T_eff heatmap; calculator figure (4c = TCRE×T_eff grid) |
 | Main table | `18` | path-based resilience per scenario (bootstrap + Clopper–Pearson CIs) |
 | Supplement | `si/` | SI figures and tables |
 | Batch scripts | `batch/` | example SLURM submission scripts (`run_*.sh`) |
@@ -111,8 +111,9 @@ This repository ships **only** the small, openly-licensed **fair calibration** i
 Source: Smith, C. (2024). *fair calibration data* (v1.4.1). Zenodo. https://doi.org/10.5281/zenodo.10566813
 
 The repository also ships `data/reference/` — small warm-start seed CSVs for the ambition
-calculator (`12_finder.py`, `13_gfp_percentile.py`). They are optional: the finder falls
-back to a full-bracket search if they are absent.
+calculator (`12_finder.py`). They are optional: the finder falls back to a full-bracket
+search if they are absent. (`13_fragility_finder.py` has no seed file — it always brackets
+[0, 0.99] with endpoint checks.)
 
 ### Add
 

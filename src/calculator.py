@@ -23,7 +23,7 @@ from tipping_params import sample_lhs_params
 
 # ── resilience defaults ──────────────────────────
 DEFAULT_TEMP_THRESHOLD = 1.5    # °C by year 2100
-DEFAULT_RATE_THRESHOLD = 0.04   # °C/yr (10-yr smoothed), [2000, 2096]
+DEFAULT_RATE_THRESHOLD = 0.04   # °C/yr: 10-yr mean of annual differences of the 20-yr running mean (~30-yr kernel), [2000, 2096]
 DEFAULT_YEAR_TARGET    = 2100
 
 # fair time axis: must match the production NGFS runs (04_run_NGFS.py uses
@@ -258,6 +258,36 @@ def resilience_tensor(run_mean_temp, prob_any_tipping_sample,
     return resilience_binary.transpose("config", "run", "sample")
 
 
+def cell_vs_full_gain_bootstrap(T_cell, T_full, B=1000, seed=0):
+    """Crossed-bootstrap CI for an UNPAIRED gain = PERI(cell candidate) − PERI(full NDC).
+
+    ``T_cell`` and ``T_full`` are per-(config, run, sample) resilience tensors over
+    different config/sample sets (a fragility cell vs the full ensemble), so there is
+    no cell-by-cell pairing: within each resample the two means are formed on their own
+    resampled (config, run, sample) indices and subtracted. NaN-aware (failed tipping
+    solves stay NaN).
+    """
+    rng = np.random.default_rng(seed)
+    Tc = T_cell.transpose("config", "run", "sample").values.astype(np.float32)
+    Tf = T_full.transpose("config", "run", "sample").values.astype(np.float32)
+    nc_c, nr_c, ns_c = Tc.shape
+    nc_f, nr_f, ns_f = Tf.shape
+    Q = np.empty(B, dtype=np.float32)
+    for b in trange(B, desc="Bootstrap(cell-full)"):
+        cell = np.nanmean(Tc[rng.integers(0, nc_c, nc_c)][:, rng.integers(0, nr_c, nr_c)]
+                          [:, :, rng.integers(0, ns_c, ns_c)])
+        full = np.nanmean(Tf[rng.integers(0, nc_f, nc_f)][:, rng.integers(0, nr_f, nr_f)]
+                          [:, :, rng.integers(0, ns_f, ns_f)])
+        Q[b] = cell - full
+    return {
+        "mean": float(Q.mean()),
+        "ci_low": float(np.quantile(Q, 0.025)),
+        "ci_high": float(np.quantile(Q, 0.975)),
+        "ci_half_width": float((np.quantile(Q, 0.975) - np.quantile(Q, 0.025)) / 2.0),
+        "samples": Q,
+    }
+
+
 def compute_gain_bootstrap(rm_cand, pas_cand, rm_base, pas_base,
                            temp_threshold=DEFAULT_TEMP_THRESHOLD,
                            rate_threshold=DEFAULT_RATE_THRESHOLD,
@@ -337,44 +367,8 @@ def compute_reduction_vs_2030ndc(df_ndc, df_candidate, target_year,
     return abs_GtCO2, frac, ndc_ref
 
 
-def compute_fragility_masks(configs, params_file, n_terciles=3):
-    """
-    Config-level generalised-feedback (GFP) score per config, via PCA on
-    [iirf_uptake[CO2], ocean_heat_transfer[0], deep_ocean_efficacy] (climate-model
-    component only; no tipping).
-    """
-    df_configs, _ = load_fair_params(params_file)
-    param_cols = ["iirf_uptake[CO2]", "ocean_heat_transfer[0]", "deep_ocean_efficacy"]
-    df_sub     = df_configs.loc[configs, param_cols].copy()
-
-    from sklearn.preprocessing import StandardScaler
-    from sklearn.decomposition import PCA
-    from pca_orient import orient_by_correlation
-    X_scaled = StandardScaler().fit_transform(df_sub.values)
-    gf_raw   = PCA(n_components=1).fit_transform(X_scaled).flatten()
-    # orient explicitly so GFP correlates positively with ECS (sklearn's PC sign is
-    # arbitrary and flips in ~20% of bootstraps given the near-tie loadings).
-    ecs = (df_configs.loc[configs, "forcing_4co2"]
-           / df_configs.loc[configs, "ocean_heat_transfer[0]"] / 2).values
-    gf_raw   = orient_by_correlation(gf_raw, ecs)
-    gf_norm  = (gf_raw - gf_raw.min()) / (gf_raw.max() - gf_raw.min())
-    gf_scores = pd.Series(gf_norm, index=df_sub.index)
-
-    labels     = ["low", "medium", "high"]
-    boundaries = np.linspace(0, 1, n_terciles + 1)
-    masks = {}
-    for i, label in enumerate(labels[:n_terciles]):
-        lo_b, hi_b = boundaries[i], boundaries[i + 1]
-        if i == n_terciles - 1:
-            m = (gf_scores >= lo_b) & (gf_scores <= hi_b)
-        else:
-            m = (gf_scores >= lo_b) & (gf_scores < hi_b)
-        masks[label] = gf_scores[m].index.tolist()
-    return masks, gf_scores
-
-
 # ══════════════════════════════════════════════════════════════════════════════
-# CANDIDATE EVALUATION  
+# CANDIDATE EVALUATION
 # ══════════════════════════════════════════════════════════════════════════════
 
 def assert_configs_match_ensemble(temperature_file="output/all_scenarios_temperature.nc",
@@ -417,10 +411,12 @@ def evaluate_candidate(reduction_frac, df_emissions, years, year_cols,
                        rate_threshold=DEFAULT_RATE_THRESHOLD,
                        year_target=DEFAULT_YEAR_TARGET,
                        config_subset=None,
+                       sample_subset=None,
                        candidate_name=None,
                        lhs_params=None,
                        return_bootstrap=False,
                        paired_gain_bootstrap=True,
+                       return_tensors=False,
                        n_bootstrap=1000):
     """
     Evaluate one candidate reduction
@@ -439,6 +435,10 @@ def evaluate_candidate(reduction_frac, df_emissions, years, year_cols,
     n_runs            : FAIR runs (1 = deterministic during finding, 100 = final)
     n_samples         : LHS tipping samples (100 fast, 1000 final)
     config_subset     : optional list of configs to restrict tipping+resilience to
+    sample_subset     : optional index array into the LHS tipping samples (e.g. a
+                        T_eff tercile). When given, lhs_params is sliced to those
+                        indices and the tipping run uses n_samples = len(sample_subset);
+                        None leaves the tipping sampling unchanged.
     candidate_name    : scenario name for the candidate (auto if None)
     lhs_params        : pre-sampled tipping params (sample_lhs_params result); if
                         None, sampled here at the shared seed. A slice of the first
@@ -504,13 +504,21 @@ def evaluate_candidate(reduction_frac, df_emissions, years, year_cols,
     if lhs_params is None:
         lhs_params = sample_lhs_params(n_samples=N_TIPPING_SAMPLES_FINAL)
 
+    # restrict to a subset of LHS samples (e.g. a T_eff tercile) by slicing the
+    # params dict; the tipping run then has n_tip = len(sample_subset) samples.
+    n_tip = n_samples
+    if sample_subset is not None:
+        sub = np.asarray(sample_subset)
+        lhs_params = {k: np.asarray(v)[sub] for k, v in lhs_params.items()}
+        n_tip = len(sub)
+
     pa_cand, pas_cand, _ = compute_tip_prob(
         processed_temperature(raw_cand), lhs_params,
-        n_samples=n_samples, configs=tip_configs, runs=runs,
+        n_samples=n_tip, configs=tip_configs, runs=runs,
     )
     pa_base, pas_base, _ = compute_tip_prob(
         processed_temperature(raw_base), lhs_params,
-        n_samples=n_samples, configs=tip_configs, runs=runs,
+        n_samples=n_tip, configs=tip_configs, runs=runs,
     )
 
     # ── 6. resilience + PAIRED gain (candidate - NDC from the same run/seeds/LHS) ─
@@ -541,8 +549,18 @@ def evaluate_candidate(reduction_frac, df_emissions, years, year_cols,
         "reduction_vs_ndc2030_frac": vs30_frac,
         "ndc_2030_GtCO2": ndc_2030,
         "n_runs": n_runs,
-        "n_samples": n_samples,
+        "n_samples": n_tip,
     }
+
+    if return_tensors:
+        # per-(config, run, sample) resilience fields (candidate + NDC) over the same
+        # subset, for an external cell-vs-full gain bootstrap (14 grid/tcre modes).
+        result["T_cand"] = resilience_tensor(
+            rm_cand, pas_cand, temp_threshold, rate_threshold, year_target,
+            config_subset=config_subset)
+        result["T_ndc"] = resilience_tensor(
+            rm_base, pas_base, temp_threshold, rate_threshold, year_target,
+            config_subset=config_subset)
 
     if return_bootstrap:
         if paired_gain_bootstrap:

@@ -4,9 +4,10 @@ Ported from ERI/plots/results_nature/calculator_combined.py.
   (a) ambition heatmap — resilience gain over the Current-Policies branch-off grid
       (start-year × decarbonisation rate), parsed from the 09 resilience summary.
   (b) emission trajectories — NDC baseline vs +1% and +10% candidates at 2035.5.
-  (c) GFP-percentile line — required NDC reduction vs Earth-system fragility.
+  (c) fragility grid — 3×3 heatmap of the required NDC cut over TCRE × T_eff terciles
+      (rows TCRE low→high, cols T_eff high→low), for the +10 %pt target.
 
-Consumes the cleaned pipeline's calculator outputs (14 confirmator + 13 GFP-percentile).
+Consumes the cleaned pipeline's calculator outputs (14 confirmator gain + grid modes).
 Light — reads a few CSVs; can run on the login node.
 """
 import os
@@ -58,15 +59,14 @@ SUMMARY_CSV = (
 )
 RESULTS_1PCT   = "output/calculator/confirmator/confirmed_results_gain0.01.csv"
 RESULTS_10PCT  = "output/calculator/confirmator/confirmed_results_gain0.1.csv"
-# require the CONFIRMED GFP-percentile (14 gfp mode); never silently fall back to the
-# unconfirmed finder (13) output, which would mix confirmed and unconfirmed numbers.
-_GFP_CONFIRMED = "output/calculator/confirmator/confirmed_gfp_percentile.csv"
-if not os.path.exists(_GFP_CONFIRMED):
+# require the CONFIRMED grid (14 grid mode); never silently fall back to the unconfirmed
+# finder (13) output, which would mix confirmed and unconfirmed numbers.
+GRID_CONFIRMED = "output/calculator/confirmator/confirmed_grid.csv"
+if not os.path.exists(GRID_CONFIRMED):
     raise FileNotFoundError(
-        f"Confirmed GFP-percentile file missing: {_GFP_CONFIRMED} (run 14 in gfp mode). "
+        f"Confirmed grid file missing: {GRID_CONFIRMED} (run 14 in grid mode). "
         "Refusing to fall back to the unconfirmed finder output."
     )
-GFP_PCT_CSV    = _GFP_CONFIRMED
 EMISSIONS_FILE = "data/processed/NGFS_historic_merged_extended_to_2110.csv"
 NDC_SCENARIO   = "REMIND-MAgPIE_3.3-4.8___Nationally_Determined_Contributions_(NDCs)"
 REDUCTION_COL  = "reduction_frac"   # confirmator column (== finder's converged_reduction_frac)
@@ -181,7 +181,7 @@ def plot_calculator_combined(output_stem):
 
     results_1c5   = pd.read_csv(RESULTS_1PCT)
     results_10pct = pd.read_csv(RESULTS_10PCT)
-    gfp_pct_df    = pd.read_csv(GFP_PCT_CSV)
+    grid_df       = pd.read_csv(GRID_CONFIRMED)
 
     df_em     = pd.read_csv(EMISSIONS_FILE)
     year_cols = [c for c in df_em.columns if c.replace(".", "", 1).isdigit()]
@@ -301,34 +301,60 @@ def plot_calculator_combined(output_stem):
               transform=ax_b.transAxes + _lbl_off, fontsize=6, fontstyle="italic",
               va="bottom", ha="left", color="#444444", clip_on=False)
 
-    # ── panel (c): GFP percentile line plot ──────────────────────────────────
-    PERCENTILES = [10, 30, 50, 70, 90]
-    for gain, color, label in zip([0.01, 0.10], [traj_cols["T2035_1"], traj_cols["T2035_10"]],
-                                  ["+1 %pt target", "+10 %pt target"]):
-        sub = gfp_pct_df[gfp_pct_df["gain_target"] == gain].sort_values("percentile")
-        ax_c.plot(sub["percentile"], sub["reduction_frac"] * 100, "o-", color=color, label=label, lw=1.2, ms=4, zorder=3)
-    ax_c.set_xticks(PERCENTILES); ax_c.set_xticklabels([f"{p}th" for p in PERCENTILES])
-    ax_c.set_xlabel("Climate–carbon feedback strength\n(Generalised feedback parameter percentile)")
-    ax_c.set_ylabel("Cut below NDC baseline in 2035 [%]")
-    ax_c.set_ylim(0, 80); ax_c.legend(frameon=False, loc="upper left"); ax_c.grid(True, alpha=0.3)
-    # second axis: absolute CO2 cut at 2035. The cut is R x the REDUCIBLE CO2, i.e. the
-    # species with POSITIVE emissions at 2035.5; net-negative CO2 AFOLU is held (not
-    # reduced), so cut = R x total only when both FFI and AFOLU are positive.
-    _co2_2035 = {}
-    for _v in ("CO2 FFI", "CO2 AFOLU"):
-        _m = ((df_em["scenario"] == NDC_SCENARIO) & (df_em["region"] == "World") &
-              (df_em["variable"] == _v))
-        _co2_2035[_v] = float(df_em.loc[_m, "2035.5"].sum()) / 1000.0 if _m.any() else 0.0
-    _afolu = _co2_2035.get("CO2 AFOLU", 0.0)
-    print(f"[M10] NDC CO2 AFOLU 2035.5 = {_afolu:+.3f} GtCO2/yr "
-          f"({'NEGATIVE -> excluded from reducible total' if _afolu < 0 else 'positive'})", flush=True)
-    _ndc2035 = sum(v for v in _co2_2035.values() if v > 0)   # GtCO2, reducible only
-    _secax = ax_c.secondary_yaxis("right", functions=(lambda p: p / 100.0 * _ndc2035,
-                                                      lambda g: g / _ndc2035 * 100.0))
-    _secax.set_ylabel("CO₂ cut in 2035 [GtCO₂ yr⁻¹]")
+    # ── panel (c): fragility grid — 3×3 TCRE × T_eff, required +10 %pt cut ─────
+    # rows = TCRE terciles low→high (bottom→top), cols = T_eff terciles high→low
+    # (left→right), so the fragile corner (high TCRE, low T_eff) is top-right. Cell
+    # text: the required NDC-2035 cut (R% and GtCO2). Cells where the finder could not
+    # reach +10 %pt even at a 99% cut ("max_cut_insufficient") or where +10 %pt is
+    # already met at the NDC (R*=0) are grey-hatched with an explanatory label.
+    TCRE_ORDER = ["low", "medium", "high"]   # y: bottom→top
+    TEFF_ORDER = ["high", "medium", "low"]   # x: left→right (T_eff high→low)
+    gi = grid_df.set_index(["tcre_tercile", "teff_tercile"])
+    Rpct = np.full((3, 3), np.nan); co2 = np.full((3, 3), np.nan)
+    status = np.empty((3, 3), dtype=object); gainpp = np.full((3, 3), np.nan)
+    for i, trc in enumerate(TCRE_ORDER):
+        for j, tef in enumerate(TEFF_ORDER):
+            r = gi.loc[(trc, tef)]
+            Rpct[i, j] = float(r["reduction_frac"]) * 100.0
+            co2[i, j] = float(r["co2_GtCO2"]) / 1000.0
+            status[i, j] = str(r["finder_status"])
+            gainpp[i, j] = float(r["achieved_gain"]) * 100.0
+
+    # physical tercile edges for the tick labels (shared across the grid)
+    tcre_edges = [float(gi.loc[("low", "high")]["tcre_lo"]), float(gi.loc[("low", "high")]["tcre_hi"]),
+                  float(gi.loc[("medium", "high")]["tcre_hi"]), float(gi.loc[("high", "high")]["tcre_hi"])]
+    teff_edges = [float(gi.loc[("low", "high")]["teff_hi"]), float(gi.loc[("low", "high")]["teff_lo"]),
+                  float(gi.loc[("low", "medium")]["teff_lo"]), float(gi.loc[("low", "low")]["teff_lo"])]
+
+    reach = np.array([[status[i, j] == "ok" for j in range(3)] for i in range(3)])
+    Zc = np.where(reach, Rpct, np.nan)
+    Xc, Yc = np.meshgrid(np.arange(4), np.arange(4))
+    pcm_c = ax_c.pcolormesh(Xc, Yc, Zc, cmap=cmcs.batlow, shading="flat", vmin=0, vmax=100)
+    _cbc = fig.colorbar(pcm_c, ax=ax_c, fraction=0.046, pad=0.03)
+    _cbc.set_label("NDC-2035 cut for +10 %pt [%]", fontsize=6)
+    for i in range(3):
+        for j in range(3):
+            if reach[i, j]:
+                col = "white" if Rpct[i, j] > 50 else "black"
+                ax_c.text(j + 0.5, i + 0.5, f"−{Rpct[i, j]:.0f}%\n(−{co2[i, j]:.1f} Gt)",
+                          ha="center", va="center", fontsize=5.5, color=col, linespacing=1.2)
+            else:
+                ax_c.add_patch(plt.Rectangle((j, i), 1, 1, fill=False, hatch="////",
+                                             edgecolor="0.55", linewidth=0.0, zorder=2.3))
+                if status[i, j] == "met_at_ndc":
+                    txt = "met at\nNDC"
+                else:  # max_cut_insufficient
+                    txt = f"max +{gainpp[i, j]:.1f} pt\n(99% cut)"
+                ax_c.text(j + 0.5, i + 0.5, txt, ha="center", va="center",
+                          fontsize=5, color="0.3", linespacing=1.2)
+    ax_c.set_xlim(0, 3); ax_c.set_ylim(0, 3); ax_c.set_aspect("auto")
+    ax_c.set_xticks(range(4)); ax_c.set_xticklabels([f"{v:.2f}" for v in teff_edges])
+    ax_c.set_yticks(range(4)); ax_c.set_yticklabels([f"{v:.2f}" for v in tcre_edges])
+    ax_c.set_xlabel("Effective tipping temperature (°C)")
+    ax_c.set_ylabel("TCRE (K per 1000 PgC)")
     ax_c.text(0.0, 1.02, "c", transform=ax_c.transAxes, fontsize=8,
               fontweight="bold", va="bottom", ha="left", clip_on=False)
-    ax_c.text(0.0, 1.02, "Ambition required vs. feedback strength",
+    ax_c.text(0.0, 1.02, "Ambition required vs. Earth-system fragility (+10 %pt)",
               transform=ax_c.transAxes + _lbl_off, fontsize=6, fontstyle="italic",
               va="bottom", ha="left", color="#444444", clip_on=False)
 

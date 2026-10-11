@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --qos=medium
-#SBATCH --job-name=run_14gfp
+#SBATCH --job-name=run_14grid
 #SBATCH --account=copan
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
@@ -16,4 +16,4 @@ echo "------------------------------------------------------------"
 module load anaconda/2025
 source activate fair
 mkdir -p logs/other logs/tipping
-python 14_confirmator.py gfp
+python 14_confirmator.py grid

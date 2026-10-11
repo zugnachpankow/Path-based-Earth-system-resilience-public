@@ -16,4 +16,5 @@ echo "------------------------------------------------------------"
 module load anaconda/2025
 source activate fair
 mkdir -p logs/other logs/tipping
-python 13_gfp_percentile.py
+# mode: grid (Fig 4c 3×3) or tcre (SI 1D windows). Default grid.
+python 13_fragility_finder.py "${1:-grid}"

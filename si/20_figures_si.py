@@ -6,14 +6,15 @@
     scenario, to show how much of the high-ECS space the resilience criterion removes
     (co-author request). "Resilient" here = the temperature criterion (T@2100 < res_y),
     the dominant driver; rate/tipping would tighten it further.
-  * ECS–GFP correlation — ECS vs generalised feedback (GFP) for a representative
-    scenario (single scatter coloured by warming in 2100), with Pearson/Spearman.
+  * ECS–PCA correlation — ECS vs the 2-variable climate-feedback PCA score (κ1, ε) for a
+    representative scenario (single scatter coloured by warming in 2100), with Pearson/Spearman.
 
-Reads output/feedback/df_params_all.pkl (~0.6 GB) — light enough for the login node.
+Reads output/feedback/df_params_all.pkl (slim: scenario, config, run, ecs, temp) and
+config_pca.csv — light enough for the login node.
 
 Outputs (output/figures/si/):
   si_ecs_histogram.{pdf,png}
-  si_ecs_gfp_correlation.{pdf,png}
+  si_ecs_pca_correlation.{pdf,png}
 """
 import os
 import sys
@@ -80,21 +81,23 @@ for ext in (".pdf", ".png"):
 plt.close(fig)
 print("Saved si_ecs_histogram.{pdf,png}", flush=True)
 
-# ── ECS–GFP correlation (representative scenario) ──────────────────────────────
-# ECS and GFP are config-level (identical across runs); collapse to one point per config
-# (median warming across runs) to avoid overplotting the ~84k (config × run) members.
+# ── ECS vs PCA score (representative scenario) ─────────────────────────────────
+# ECS and the 2-var climate-feedback PCA score (κ1, ε) are both config-level; collapse
+# to one point per config (median warming across runs) to avoid overplotting the ~84k
+# (config × run) members. PCA score + ECS come from 11 (config_pca.csv).
 REP_SC = "REMIND-MAgPIE_3.3-4.8___Net_Zero_2050"
+cp = pd.read_csv("output/feedback/config_pca.csv", index_col="config")
 rep = (df_params_all[df_params_all["scenario"] == REP_SC]
-       .groupby("config")
-       .agg(ecs=("ecs", "first"), gfp=("general_feedback", "mean"), temp=("temp", "median"))
-       .dropna(subset=["ecs", "gfp"]))
-r_p, _ = pearsonr(rep["ecs"], rep["gfp"])
-r_s, _ = spearmanr(rep["ecs"], rep["gfp"])
+       .groupby("config").agg(temp=("temp", "median")))
+rep["ecs"] = cp["ECS"]; rep["pca"] = cp["pca_score"]
+rep = rep.dropna(subset=["ecs", "pca"])
+r_p, _ = pearsonr(rep["ecs"], rep["pca"])
+r_s, _ = spearmanr(rep["ecs"], rep["pca"])
 
 fig, ax = plt.subplots(figsize=(TWO_COL * 0.52, TWO_COL * 0.42))
-sc_pts = ax.scatter(rep["ecs"], rep["gfp"], c=rep["temp"],
+sc_pts = ax.scatter(rep["ecs"], rep["pca"], c=rep["temp"],
                     cmap=cmcs.batlow, s=12, alpha=0.75, edgecolors="none", rasterized=True)
-ax.set_xlabel("ECS [°C]"); ax.set_ylabel("Generalised Feedback Parameter")
+ax.set_xlabel("ECS [°C]"); ax.set_ylabel("PCA score (κ1, ε)")
 cb = fig.colorbar(sc_pts, ax=ax, fraction=0.046, pad=0.02)
 cb.set_label("Median warming in 2100 for Net Zero 2050 [°C]", fontsize=6)
 cb.ax.tick_params(labelsize=5)
@@ -105,6 +108,6 @@ ax.text(0.97, 0.03, f"Pearson r = {r_p:.2f}\nSpearman ρ = {r_s:.2f}",
 ax.grid(True, alpha=0.3)
 fig.tight_layout()
 for ext in (".pdf", ".png"):
-    fig.savefig(os.path.join(OUT_DIR, "si_ecs_gfp_correlation" + ext), dpi=300, bbox_inches="tight")
+    fig.savefig(os.path.join(OUT_DIR, "si_ecs_pca_correlation" + ext), dpi=300, bbox_inches="tight")
 plt.close(fig)
-print("Saved si_ecs_gfp_correlation.{pdf,png}", flush=True)
+print("Saved si_ecs_pca_correlation.{pdf,png}", flush=True)
