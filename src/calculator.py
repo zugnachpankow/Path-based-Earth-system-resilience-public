@@ -258,26 +258,40 @@ def resilience_tensor(run_mean_temp, prob_any_tipping_sample,
     return resilience_binary.transpose("config", "run", "sample")
 
 
-def cell_vs_full_gain_bootstrap(T_cell, T_full, B=1000, seed=0):
+def cell_vs_full_gain_bootstrap(T_cell, T_full, cell_config_pos, cell_sample_pos, B=1000, seed=0):
     """Crossed-bootstrap CI for an UNPAIRED gain = PERI(cell candidate) − PERI(full NDC).
 
-    ``T_cell`` and ``T_full`` are per-(config, run, sample) resilience tensors over
-    different config/sample sets (a fragility cell vs the full ensemble), so there is
-    no cell-by-cell pairing: within each resample the two means are formed on their own
-    resampled (config, run, sample) indices and subtracted. NaN-aware (failed tipping
-    solves stay NaN).
+    The gain is unpaired (candidate cell vs full-ensemble NDC — different scenarios), but
+    configs, runs and LHS samples are the SAME physical units in both tensors: the 841
+    calibration configs, the per-run FAIR seeds (seed_start + i*99, fixed across runs), and
+    the seed-1234 1000-sample LHS of which the cell is a T_eff/TCRE subset. So each
+    bootstrap draw must resample (config, run, sample) ONCE and apply the same indices to
+    both means — resampling the two independently would ignore that shared variation and
+    inflate the difference CI.
+
+    The cell tensor (``T_cell``, over a subset of configs/samples) is laid onto the full
+    (config, run, sample) grid at ``cell_config_pos`` × all runs × ``cell_sample_pos`` and
+    padded with NaN elsewhere, so one shared index set drives both and the cell mean
+    (NaN-aware) averages only the drawn units that fall in the cell.
     """
     rng = np.random.default_rng(seed)
-    Tc = T_cell.transpose("config", "run", "sample").values.astype(np.float32)
     Tf = T_full.transpose("config", "run", "sample").values.astype(np.float32)
-    nc_c, nr_c, ns_c = Tc.shape
-    nc_f, nr_f, ns_f = Tf.shape
+    Tc = T_cell.transpose("config", "run", "sample").values.astype(np.float32)
+    nc_f, nr, ns_f = Tf.shape
+    cell_config_pos = np.asarray(cell_config_pos)
+    cell_sample_pos = np.asarray(cell_sample_pos)
+    assert Tc.shape == (len(cell_config_pos), nr, len(cell_sample_pos)), (
+        f"cell tensor {Tc.shape} inconsistent with positions "
+        f"({len(cell_config_pos)}, {nr}, {len(cell_sample_pos)})")
+
+    Tc_full = np.full((nc_f, nr, ns_f), np.nan, dtype=np.float32)   # cell on the full grid
+    Tc_full[np.ix_(cell_config_pos, np.arange(nr), cell_sample_pos)] = Tc
+
     Q = np.empty(B, dtype=np.float32)
     for b in trange(B, desc="Bootstrap(cell-full)"):
-        cell = np.nanmean(Tc[rng.integers(0, nc_c, nc_c)][:, rng.integers(0, nr_c, nr_c)]
-                          [:, :, rng.integers(0, ns_c, ns_c)])
-        full = np.nanmean(Tf[rng.integers(0, nc_f, nc_f)][:, rng.integers(0, nr_f, nr_f)]
-                          [:, :, rng.integers(0, ns_f, ns_f)])
+        ci = rng.integers(0, nc_f, nc_f); ri = rng.integers(0, nr, nr); si = rng.integers(0, ns_f, ns_f)
+        full = np.nanmean(Tf[ci][:, ri][:, :, si])
+        cell = np.nanmean(Tc_full[ci][:, ri][:, :, si])            # NaNs outside the cell ignored
         Q[b] = cell - full
     return {
         "mean": float(Q.mean()),

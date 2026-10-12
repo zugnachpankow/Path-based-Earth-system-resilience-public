@@ -6,6 +6,7 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=113
 #SBATCH --mem=250G
+#SBATCH --time=10:00:00
 #SBATCH --output=logs/other/%x-%j.out
 #SBATCH --error=logs/other/%x-%j.err
 #SBATCH --chdir=/home/maxbecht/Path-based-Earth-system-resilience-public

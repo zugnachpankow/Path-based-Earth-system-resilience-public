@@ -128,6 +128,8 @@ if FRAGILITY_MODE:
         lhs_params=lhs_params, return_tensors=True, candidate_name="NDC_calc__baseline_full",
     )
     T_full = base["T_ndc"]
+    full_cfg_pos = {c: k for k, c in enumerate(T_full.config.values)}   # config id -> full-grid row
+    n_samp_full = T_full.sizes["sample"]
     _ndc_diff = base["ndc_resilience"] - baseline_resilience
     print(f"NDC cross-check: calculator {base['ndc_resilience']:.9f} vs 09 "
           f"{baseline_resilience:.9f} (diff {_ndc_diff:+.2e})", flush=True)
@@ -165,7 +167,9 @@ if FRAGILITY_MODE:
                 config_subset=cfg_subset, sample_subset=samp_subset, lhs_params=lhs_params,
                 return_tensors=True, candidate_name=cand_name,
             )
-            boot = cell_vs_full_gain_bootstrap(res["T_cand"], T_full, B=N_BOOTSTRAP)
+            # shared-unit positions on the full grid: cell configs (by id) × its T_eff tercile samples
+            cfg_pos = np.array([full_cfg_pos[c] for c in res["T_cand"].config.values])
+            boot = cell_vs_full_gain_bootstrap(res["T_cand"], T_full, cfg_pos, samp_subset, B=N_BOOTSTRAP)
             gain = res["achieved_resilience"] - baseline_resilience
             rec = {
                 "tcre_tercile": r["tcre_tercile"], "teff_tercile": r["teff_tercile"],
@@ -225,7 +229,10 @@ if FRAGILITY_MODE:
                 config_subset=cfg_subset, lhs_params=lhs_params,
                 return_tensors=True, candidate_name=cand_name,
             )
-            boot = cell_vs_full_gain_bootstrap(res["T_cand"], T_full, B=N_BOOTSTRAP)
+            # tcre windows use all samples; cell is a config subset over the full 1000 samples
+            cfg_pos = np.array([full_cfg_pos[c] for c in res["T_cand"].config.values])
+            boot = cell_vs_full_gain_bootstrap(res["T_cand"], T_full, cfg_pos,
+                                               np.arange(n_samp_full), B=N_BOOTSTRAP)
             gain = res["achieved_resilience"] - baseline_resilience
             rec = {
                 "percentile": pct, "tcre_value": r["tcre_value"], "n_configs": len(cfg_subset),

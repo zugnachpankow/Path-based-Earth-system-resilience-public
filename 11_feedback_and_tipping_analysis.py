@@ -69,48 +69,76 @@ if set(configs) != ensemble_configs:
     )
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Part 1 — TCRE per config (concentration-driven 1pctCO2, FAIR 2.2.3 / v1.4.0)
+# Part 1 — TCRE per config (concentration-driven 1pctCO2) — replicates fair-calibrate
+#          v1.4.0 parallel_1pct.py exactly, so our per-config TCRE == theirs.
 # ══════════════════════════════════════════════════════════════════════════════
-# 1pctCO2: CO2 concentration grows 1%/yr from its v1.4.0 baseline; CH4 and N2O are
-# held at baseline; no natural forcing, no other species, deterministic run. TCR is
-# the warming at yr70 (2xCO2); cumulative emitted C is diagnosed by FAIR's carbon
-# cycle. TCRE = TCR / cumC(2x) * 1000  (K per 1000 PgC). ECS = F_4xCO2 / kappa1 / 2.
+# CO2/CH4/N2O only, concentration-driven, 1850..1990. CO2 grows 1%/yr from the FIXED
+# 1850 value (NOT each config's own baseline); CH4/N2O held at their 1850 values; the
+# same three 1850 values are used as baseline_concentration AND as the forcing
+# reference for every config. Only the 16 climate / carbon-cycle / forcing-scale
+# columns that parallel_1pct overrides are taken per config from the v1.4.0 calibration
+# (not override_defaults on the whole file, which would reset the fixed 1850 baseline).
+# TCR = T at index 70 (1920, 2xCO2); TCRE = TCR / cumC_2x * 1000 (K/1000 PgC);
+# AF70 = airborne fraction at index 70; T_1000GtC = warming at 1000 GtC (3664 GtCO2).
+CO2_1850, CH4_1850, N2O_1850 = 284.3169988, 808.2490285, 273.021047
+PARALLEL_COLS = [
+    "ocean_heat_capacity[0]", "ocean_heat_capacity[1]", "ocean_heat_capacity[2]",
+    "ocean_heat_transfer[0]", "ocean_heat_transfer[1]", "ocean_heat_transfer[2]",
+    "deep_ocean_efficacy", "gamma_autocorrelation", "forcing_4co2",
+    "iirf_0[CO2]", "iirf_airborne[CO2]", "iirf_uptake[CO2]", "iirf_temperature[CO2]",
+    "forcing_scale[CO2]", "forcing_scale[CH4]", "forcing_scale[N2O]",
+]
+
 f = FAIR(ch4_method="Thornhill2021")
-f.define_time(0, 140, 1)
-f.define_scenarios(["1pct"])
+f.define_time(1850, 1990, 1)
+f.define_scenarios(["1pctCO2"])
 f.define_configs(configs)
-_, props = read_properties(filename=SPECIES_CONFIGS)
 sp3 = ["CO2", "CH4", "N2O"]
-f.define_species(sp3, {k: {**props[k], "input_mode": "concentration"} for k in sp3})
+_, props = read_properties(filename=SPECIES_CONFIGS)
+props = {k: {**props[k], "input_mode": "concentration", "greenhouse_gas": True,
+             "aerosol_chemistry_from_emissions": False,
+             "aerosol_chemistry_from_concentration": False} for k in sp3}
+f.define_species(sp3, props)
 f.allocate()
 f.fill_species_configs(SPECIES_CONFIGS)
-with fair_override_file(df_fair) as ov:
+with fair_override_file(df_fair[PARALLEL_COLS]) as ov:   # only parallel_1pct's 16 columns
     f.override_defaults(ov)
 
-bc = f.species_configs["baseline_concentration"]
 t = np.arange(0, 141)
-fill(f.concentration, bc.sel(specie="CO2").values[None, :] * (1.01 ** t[:, None])[:, None, :], specie="CO2")
-fill(f.concentration, bc.sel(specie="CH4").values[None, None, :] * np.ones((141, 1, 1)), specie="CH4")
-fill(f.concentration, bc.sel(specie="N2O").values[None, None, :] * np.ones((141, 1, 1)), specie="N2O")
+fill(f.concentration, (CO2_1850 * 1.01 ** t)[:, None, None], specie="CO2")
+fill(f.concentration, CH4_1850, specie="CH4")
+fill(f.concentration, N2O_1850, specie="N2O")
+for sp, val in [("CO2", CO2_1850), ("CH4", CH4_1850), ("N2O", N2O_1850)]:
+    fill(f.species_configs["baseline_concentration"], val, specie=sp)
+    fill(f.species_configs["forcing_reference_concentration"], val, specie=sp)
 fill(f.climate_configs["stochastic_run"], False)
-for a in ["forcing", "temperature", "cumulative_emissions", "airborne_emissions", "ocean_heat_content_change"]:
+initialise(f.concentration, f.species_configs["baseline_concentration"])
+for a in ["forcing", "temperature", "cumulative_emissions", "airborne_emissions"]:
     initialise(getattr(f, a), 0)
 f.run(progress=False)
 
-TCR = f.temperature.sel(layer=0).values[70, 0, :]                       # K at yr70 (2xCO2)
-cumC = f.cumulative_emissions.sel(specie="CO2").values[70, 0, :] / 3.664  # GtCO2 -> PgC
+TCR = f.temperature.sel(layer=0).values[70, 0, :]                        # K at index 70 (1920)
+cum_co2 = f.cumulative_emissions.sel(specie="CO2").values[:, 0, :]        # GtCO2 (timebounds, config)
+air_co2 = f.airborne_emissions.sel(specie="CO2").values[:, 0, :]
+cumC = cum_co2[70] / 3.664                                               # GtCO2 -> PgC at index 70
 TCRE = TCR / cumC * 1000.0                                               # K / 1000 PgC
+AF70 = air_co2[70] / cum_co2[70]                                         # airborne fraction at index 70
+temp_ts = f.temperature.sel(layer=0).values[:, 0, :]                     # (timebounds, config)
+T_1000GtC = np.array([np.interp(1000.0, cum_co2[:, c] / 3.664, temp_ts[:, c])
+                      for c in range(len(configs))])                     # warming at 1000 GtC
 ECS = (df_fair["forcing_4co2"] / df_fair["ocean_heat_transfer[0]"] / 2).values
 
-df_tcre = pd.DataFrame({"config": configs, "TCR": TCR, "cumC_2x": cumC,
-                        "TCRE": TCRE, "ECS": ECS}).set_index("config")
+df_tcre = pd.DataFrame({"config": configs, "TCR": TCR, "cumC_2x": cumC, "TCRE": TCRE,
+                        "AF70": AF70, "T_1000GtC": T_1000GtC, "ECS": ECS}).set_index("config")
 df_tcre.to_csv(os.path.join(SAVE_DIR, "tcre.csv"))
 
 print(f"\n[TCRE] n={len(df_tcre)} configs  (config set == ensemble: {set(configs) == ensemble_configs})")
-print(f"[TCRE] median={np.median(TCRE):.3f}  5-95%=[{np.percentile(TCRE, 5):.3f}, {np.percentile(TCRE, 95):.3f}]  "
-      f"(AR6: 1.65 [1.0, 2.3])")
-print(f"[TCRE] TCR median={np.median(TCR):.3f}  corr(TCRE,TCR)={np.corrcoef(TCRE, TCR)[0, 1]:.3f}  "
-      f"corr(TCRE,ECS)={np.corrcoef(TCRE, ECS)[0, 1]:.3f}")
+print(f"[TCRE] median={np.median(TCRE):.3f}  5-95%=[{np.percentile(TCRE, 5):.3f}, {np.percentile(TCRE, 95):.3f}]")
+print(f"[TCRE] T70   5/50/95 = {np.percentile(TCR, [5, 50, 95])}")
+print(f"[TCRE] T1000 5/50/95 = {np.percentile(T_1000GtC, [5, 50, 95])}")
+print(f"[TCRE] AF70  16/50/84 = {np.percentile(AF70, [16, 50, 84])}")
+print(f"[TCRE] TCRE  16/50/84 = {np.percentile(TCRE, [16, 50, 84])}")
+print(f"[TCRE] corr(TCRE,TCR)={np.corrcoef(TCRE, TCR)[0, 1]:.3f}  corr(TCRE,ECS)={np.corrcoef(TCRE, ECS)[0, 1]:.3f}")
 print(f"Wrote {os.path.join(SAVE_DIR, 'tcre.csv')}", flush=True)
 
 # ══════════════════════════════════════════════════════════════════════════════

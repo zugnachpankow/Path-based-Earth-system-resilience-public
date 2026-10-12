@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --qos=short
-#SBATCH --time=04:00:00
+#SBATCH --time=02:00:00
 #SBATCH --job-name=run_15
 #SBATCH --account=copan
 #SBATCH --nodes=1
