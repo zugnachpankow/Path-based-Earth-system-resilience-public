@@ -180,7 +180,8 @@ def compute_resilience_scalar(run_mean_temp, prob_any_tipping,
     run_mean_temp    : DataArray (timebounds, member) — 20-yr running mean, baseline-corrected
     prob_any_tipping : DataArray (config, run) — aggregated mean tipping probability
     temp_threshold   : °C limit at year_target
-    rate_threshold   : °C/yr rate limit (10-yr smoothed) over 2000–year_target
+    rate_threshold   : °C/yr rate limit (10-yr mean of annual diffs of the 20-yr running
+                       mean, ~30-yr kernel) over 2000–year_target
     year_target      : year at which temperature must be below threshold
     config_subset    : list of config values to include (None = all)
 

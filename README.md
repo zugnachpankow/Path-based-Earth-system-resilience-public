@@ -104,11 +104,13 @@ Run the numbered scripts in order from the repo root. Each script reads the pipe
 
 This repository ships **only** the small, openly-licensed **fair calibration** inputs. RCMIP and (lincensed) NGFS data must be downloaded and placed in the right folder as indicated below. All pipeline intermediates and results are regenerated and are not tracked.
 
-### Included — `data/raw/` (fair 1.4.1 calibration, openly licensed)
-`calibrated_constrained_parameters_calibration1.4.1.csv`,
-`species_configs_properties_calibration1.4.1.csv`, `species_configs_properties_NGFS.csv`,
-`fair_units_reference.csv`, `fair_variables_reference.csv`, `volcanic_solar.csv`.
-Source: Smith, C. (2024). *fair calibration data* (v1.4.1). Zenodo. https://doi.org/10.5281/zenodo.10566813
+### Included — `data/raw/` (small fair reference/mapping tables, openly licensed)
+`species_configs_properties_NGFS.csv`, `fair_units_reference.csv`,
+`fair_variables_reference.csv`, `volcanic_solar.csv`.
+The v1.4.0 calibration parameters themselves are **not** shipped — download the
+fair-calibrate v1.4.0 posteriors (see below) and build the fair-format inputs with
+`00b_build_fair_v140_inputs.py`.
+Source: Smith, C. (2024). *fair calibration data* (v1.4.0). Zenodo. https://doi.org/10.5281/zenodo.10566646
 
 The repository also ships `data/reference/` — small warm-start seed CSVs for the ambition
 calculator (`12_finder.py`). They are optional: the finder falls back to a full-bracket

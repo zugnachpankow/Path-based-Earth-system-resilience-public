@@ -81,6 +81,7 @@ if set(configs) != ensemble_configs:
 # TCR = T at index 70 (1920, 2xCO2); TCRE = TCR / cumC_2x * 1000 (K/1000 PgC);
 # AF70 = airborne fraction at index 70; T_1000GtC = warming at 1000 GtC (3664 GtCO2).
 CO2_1850, CH4_1850, N2O_1850 = 284.3169988, 808.2490285, 273.021047
+GTCO2_PER_GTC = 44.009 / 12.011         # CO2/C molar-mass ratio (exact; matches fair-calibrate)
 PARALLEL_COLS = [
     "ocean_heat_capacity[0]", "ocean_heat_capacity[1]", "ocean_heat_capacity[2]",
     "ocean_heat_transfer[0]", "ocean_heat_transfer[1]", "ocean_heat_transfer[2]",
@@ -120,11 +121,11 @@ f.run(progress=False)
 TCR = f.temperature.sel(layer=0).values[70, 0, :]                        # K at index 70 (1920)
 cum_co2 = f.cumulative_emissions.sel(specie="CO2").values[:, 0, :]        # GtCO2 (timebounds, config)
 air_co2 = f.airborne_emissions.sel(specie="CO2").values[:, 0, :]
-cumC = cum_co2[70] / 3.664                                               # GtCO2 -> PgC at index 70
+cumC = cum_co2[70] / GTCO2_PER_GTC                                       # GtCO2 -> PgC at index 70
 TCRE = TCR / cumC * 1000.0                                               # K / 1000 PgC
 AF70 = air_co2[70] / cum_co2[70]                                         # airborne fraction at index 70
 temp_ts = f.temperature.sel(layer=0).values[:, 0, :]                     # (timebounds, config)
-T_1000GtC = np.array([np.interp(1000.0, cum_co2[:, c] / 3.664, temp_ts[:, c])
+T_1000GtC = np.array([np.interp(1000.0, cum_co2[:, c] / GTCO2_PER_GTC, temp_ts[:, c])
                       for c in range(len(configs))])                     # warming at 1000 GtC
 ECS = (df_fair["forcing_4co2"] / df_fair["ocean_heat_transfer[0]"] / 2).values
 
