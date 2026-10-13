@@ -17,5 +17,5 @@ echo "------------------------------------------------------------"
 module load anaconda/2025
 source activate fair
 mkdir -p logs/other logs/tipping
-# mode: grid (Fig 4c 3×3) or tcre (SI 1D windows). Default grid.
-python 13_fragility_finder.py "${1:-grid}"
+# grid mode: Fig 4c 3×3 TCRE × T_eff terciles (tcre windows -> run_13b.sh)
+python 13_fragility_finder.py grid
