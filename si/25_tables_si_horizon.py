@@ -16,7 +16,7 @@ on login.
 
 Reads output/running_mean_temps.pkl (08) + output/tipping/*.nc (07).
 Writes output/resilience/horizon_validation.csv and
-       output/tables/si_horizon_sensitivity.{csv,md}.
+       tables/si_horizon_sensitivity.{csv,md}.
 """
 import os
 import sys
@@ -34,6 +34,10 @@ from figures_common import get_scenario_type, ssp_scenarios
 RM_FILE  = "output/running_mean_temps.pkl"
 TIP_DIR  = "output/tipping"
 VALID_CSV = "output/resilience/horizon_validation.csv"
+# the 09 summary encodes the current rate window; a VALID_CSV older than it is stale
+# (e.g. computed before the 2000–2096 rate-window fix) and must be recomputed.
+SUMMARY_CSV = ("output/resilience/resilience_conditions_time2100_temp1.5_rate04/"
+               "summary/resilience_summary_time2100_temp1.5_rate04.csv")
 TABLE_DIR = "tables"
 
 res_x, res_y, rate = 2100, 1.5, 0.04
@@ -129,9 +133,13 @@ def build_si_table(df):
 if __name__ == "__main__":
     # Reuse the cached comparison if present (formatting is light, runs on login);
     # otherwise compute it (heavy pickle load -> SLURM).
-    if os.path.exists(VALID_CSV):
+    _fresh = (os.path.exists(VALID_CSV) and os.path.exists(SUMMARY_CSV)
+              and os.path.getmtime(VALID_CSV) >= os.path.getmtime(SUMMARY_CSV))
+    if _fresh:
         print(f"Using cached {VALID_CSV}", flush=True)
         df = pd.read_csv(VALID_CSV)
     else:
+        if os.path.exists(VALID_CSV):
+            print(f"{VALID_CSV} is missing/older than the 09 summary (stale) — recomputing", flush=True)
         df = compute_validation()
     build_si_table(df)

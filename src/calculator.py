@@ -427,6 +427,7 @@ def evaluate_candidate(reduction_frac, df_emissions, years, year_cols,
                        year_target=DEFAULT_YEAR_TARGET,
                        config_subset=None,
                        sample_subset=None,
+                       run_base=True,
                        candidate_name=None,
                        lhs_params=None,
                        return_bootstrap=False,
@@ -454,6 +455,10 @@ def evaluate_candidate(reduction_frac, df_emissions, years, year_cols,
                         T_eff tercile). When given, lhs_params is sliced to those
                         indices and the tipping run uses n_samples = len(sample_subset);
                         None leaves the tipping sampling unchanged.
+    run_base          : if False, skip the NDC base aggregation + its tipping run (and
+                        ndc_resilience / achieved_gain / T_ndc / paired bootstrap).
+                        grid/tcre modes pass False (they need only the candidate); gain
+                        mode keeps True (the paired NDC gain).
     candidate_name    : scenario name for the candidate (auto if None)
     lhs_params        : pre-sampled tipping params (sample_lhs_params result); if
                         None, sampled here at the shared seed. A slice of the first
@@ -508,9 +513,14 @@ def evaluate_candidate(reduction_frac, df_emissions, years, year_cols,
     raw_cand, rm_cand, configs, runs = aggregate_temperature_from_runs(
         run_dir, candidate_name, max_runs=n_runs
     )
-    raw_base, rm_base, _, _ = aggregate_temperature_from_runs(
-        run_dir, base_scenario_name, max_runs=n_runs
-    )
+    # The NDC base is only needed for the PAIRED gain (gain mode); grid/tcre use the
+    # candidate alone (gain vs the externally-built full NDC). run_base=False skips the
+    # base aggregation + its tipping run, halving the per-call tipping cost.
+    raw_base = rm_base = None
+    if run_base:
+        raw_base, rm_base, _, _ = aggregate_temperature_from_runs(
+            run_dir, base_scenario_name, max_runs=n_runs
+        )
 
     # ── 5. tipping probabilities, driven by the PROCESSED temperature exactly as
     #       src/run_tipping.py (per-member 1850-1900 rebase + 20-yr running mean,
@@ -531,21 +541,27 @@ def evaluate_candidate(reduction_frac, df_emissions, years, year_cols,
         processed_temperature(raw_cand), lhs_params,
         n_samples=n_tip, configs=tip_configs, runs=runs,
     )
-    pa_base, pas_base, _ = compute_tip_prob(
-        processed_temperature(raw_base), lhs_params,
-        n_samples=n_tip, configs=tip_configs, runs=runs,
-    )
+    pa_base = pas_base = None
+    if run_base:
+        pa_base, pas_base, _ = compute_tip_prob(
+            processed_temperature(raw_base), lhs_params,
+            n_samples=n_tip, configs=tip_configs, runs=runs,
+        )
 
     # ── 6. resilience + PAIRED gain (candidate - NDC from the same run/seeds/LHS) ─
     achieved_resilience = compute_resilience_scalar(
         rm_cand, pa_cand, temp_threshold, rate_threshold, year_target,
         config_subset=config_subset,
     )
-    ndc_resilience = compute_resilience_scalar(
-        rm_base, pa_base, temp_threshold, rate_threshold, year_target,
-        config_subset=config_subset,
-    )
-    achieved_gain = achieved_resilience - ndc_resilience
+    if run_base:
+        ndc_resilience = compute_resilience_scalar(
+            rm_base, pa_base, temp_threshold, rate_threshold, year_target,
+            config_subset=config_subset,
+        )
+        achieved_gain = achieved_resilience - ndc_resilience
+    else:
+        ndc_resilience = np.nan      # base not run (grid/tcre use the external full NDC)
+        achieved_gain = np.nan
 
     # emissions-side reductions for the Fig-3 panel-b annotations (df_base = the
     # NDC baseline; cheap, no FAIR/tipping)
@@ -568,17 +584,20 @@ def evaluate_candidate(reduction_frac, df_emissions, years, year_cols,
     }
 
     if return_tensors:
-        # per-(config, run, sample) resilience fields (candidate + NDC) over the same
-        # subset, for an external cell-vs-full gain bootstrap (14 grid/tcre modes).
+        # per-(config, run, sample) resilience field for the candidate (and the NDC,
+        # only when run_base); grid/tcre bootstrap the candidate cell vs an external T_full.
         result["T_cand"] = resilience_tensor(
             rm_cand, pas_cand, temp_threshold, rate_threshold, year_target,
             config_subset=config_subset)
-        result["T_ndc"] = resilience_tensor(
-            rm_base, pas_base, temp_threshold, rate_threshold, year_target,
-            config_subset=config_subset)
+        if run_base:
+            result["T_ndc"] = resilience_tensor(
+                rm_base, pas_base, temp_threshold, rate_threshold, year_target,
+                config_subset=config_subset)
 
     if return_bootstrap:
         if paired_gain_bootstrap:
+            if not run_base:
+                raise ValueError("paired_gain_bootstrap requires run_base=True (needs the NDC run)")
             # gain mode: CI of the PAIRED candidate-minus-NDC difference (same run)
             result["bootstrap"] = compute_gain_bootstrap(
                 rm_cand, pas_cand, rm_base, pas_base,

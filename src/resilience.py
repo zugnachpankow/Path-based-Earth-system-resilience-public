@@ -52,7 +52,7 @@ def compute_resilience(rm, res_x, res_y, rate, res_end=None):
 
     Resilient iff neither threshold is violated:
       - climate:   GMST > ``res_y`` at any time in [``res_x``, ``res_end``]
-      - warming rate: 10-yr rate of change > ``rate`` over 2000..``res_x``
+      - warming rate: 10-yr rate of change > ``rate`` over 2000..2096
     ``res_end`` bounds the climate window's upper edge; ``None`` (default) scans to
     the end of the trajectory (the current behaviour). Set it (e.g. 2109/2110.5) to
     evaluate resilience over a fixed horizon consistent across scenario families —

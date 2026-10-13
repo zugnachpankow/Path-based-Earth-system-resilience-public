@@ -18,7 +18,7 @@ Table C (panel c): the Fig-4c 3×3 grid — required cut over TCRE × T_eff terc
   +10 pp target, from 14 grid mode (with not-reachable / met-at-NDC flags).
 
 Reads stored outputs only (no reruns). Light — runs on login.
-Output -> output/tables/fig4_table{A_branchoffs, B_targets, C_grid}.{csv,md}
+Output -> tables/fig4_table{A_branchoffs, B_targets, C_grid}.{csv,md}
 """
 import os
 import re
@@ -213,11 +213,12 @@ for pct in [10, 30, 50, 70, 90]:
     mask = (tcre_rank >= pct - TCRE_HALFWIDTH) & (tcre_rank <= pct + TCRE_HALFWIDTH)
     win_mean[pct] = float(tcre[mask].mean())
 
-rows = []
+rows, resid_raw = [], []    # resid_raw: |baseline + gain - after| from UNROUNDED values
 for gain, conf_csv in [(0.01, CONF_1), (0.10, CONF_10)]:
     cr = pd.read_csv(conf_csv)
     rr = cr[cr["target_year"].round(1) == 2035.5].iloc[0]
     base = float(rr["baseline_resilience"])
+    resid_raw.append(abs(base + float(rr["achieved_gain"]) - float(rr["achieved_resilience"])))
     rows.append({
         "target_pp": int(gain * 100), "conditioning": "all configs",
         "tcre_target": np.nan, "window_mean_tcre": np.nan, "n_configs": N_CP, "status": "ok",
@@ -236,6 +237,7 @@ for gain in [0.01, 0.10]:
     sub = tcw[tcw["gain_target"] == gain].sort_values("percentile")
     for _, rr in sub.iterrows():
         base = float(rr["baseline_resilience"]); pct = int(rr["percentile"])
+        resid_raw.append(abs(base + float(rr["achieved_gain"]) - float(rr["achieved_resilience"])))
         rows.append({
             "target_pp": int(gain * 100), "conditioning": f"TCRE {pct}th",
             "tcre_target": round(float(rr["tcre_value"]), 4),
@@ -254,11 +256,11 @@ for gain in [0.01, 0.10]:
 B = pd.DataFrame(rows)
 B.to_csv(os.path.join(OUT_DIR, "fig4_tableB_targets.csv"), index=False)
 
-# M1 check: resilience after cut == full baseline + gain (point estimate), for every row.
-# For the TCRE-window rows this is exact (unpaired gain); for 'all configs' it holds within
-# the NDC cross-check tolerance (paired gain vs the same-run NDC == 09 baseline).
-_resid = (B["baseline_resilience_pct"] + B["gain_pp"] - B["resilience_after_pct"]).abs()
-print(f"[M1] max |baseline + gain - after| = {_resid.max():.4f} pp (expect ~0)", flush=True)
+# M1 check: resilience after cut == full baseline + gain (point estimate), for every row,
+# from UNROUNDED values (so rounding to 2-3 dp can't mask a real discrepancy). For the
+# TCRE-window rows this is exact (unpaired gain); for 'all configs' it holds within the
+# NDC cross-check tolerance (paired gain vs the same-run NDC == 09 baseline).
+print(f"[M1] max |baseline + gain - after| = {max(resid_raw) * 100:.6f} pp (expect ~0)", flush=True)
 
 _gain_ci = [f"{g:.2f} [{lo:.2f}, {hi:.2f}]" for g, lo, hi in
             zip(B["gain_pp"], B["gain_ci_low_pct"], B["gain_ci_high_pct"])]
@@ -274,6 +276,7 @@ B_md = pd.DataFrame({
     "Baseline res. [%]": [f"{v:.3f}" for v in B["baseline_resilience_pct"]],
     "Gain [pp] (95 % CI)": _gain_ci,
     "Resilience after cut [%]": [f"{v:.2f}" for v in B["resilience_after_pct"]],
+    "Status": B["status"],
 })
 with open(os.path.join(OUT_DIR, "fig4_tableB_targets.md"), "w") as fh:
     fh.write("## Table B — required reduction and confirmed resilience gain (Fig. 4b; TCRE windows = SI)\n\n")
@@ -289,12 +292,12 @@ with open(os.path.join(OUT_DIR, "fig4_tableB_targets.md"), "w") as fh:
 # Header order/alignment must match B_md.columns above.
 _hdr = ["Target [pp]", "Conditioning", "TCRE", "mean TCRE", "$n$", "$R$ [\\%]",
         "CO$_2$ cut 2035 [GtCO$_2$\\,yr$^{-1}$]", "NDC CO$_2$ 2035 [GtCO$_2$\\,yr$^{-1}$]",
-        "Baseline res.\\ [\\%]", "Gain [pp] (95\\,\\% CI)", "Resilience after cut [\\%]"]
+        "Baseline res.\\ [\\%]", "Gain [pp] (95\\,\\% CI)", "Resilience after cut [\\%]", "Status"]
 _Ltx = [r"\footnotesize", r"\setlength{\tabcolsep}{3.5pt}",
-        r"\begin{tabular}{@{}llrrrrrrrlr@{}}", r"\toprule",
+        r"\begin{tabular}{@{}llrrrrrrrlrl@{}}", r"\toprule",
         " & ".join(_hdr) + r" \\", r"\midrule"]
 for _, rr in B_md.iterrows():
-    vals = [str(rr[c]).replace("—", "--") for c in B_md.columns]
+    vals = [str(rr[c]).replace("—", "--").replace("_", r"\_") for c in B_md.columns]
     _Ltx.append(" & ".join(vals) + r" \\")
 _Ltx += [r"\bottomrule", r"\end{tabular}"]
 with open(os.path.join(OUT_DIR, "fig4_tableB_targets.tex"), "w") as fh:

@@ -7,7 +7,7 @@ The x-axis (T_eff deciles) and all binning/averaging are identical to 16 (shared
 src/heatmap_common.py). Conventions: physical decile edges on the ticks; cells with
 n_eff = min(configs, samples) < 20 hatched.
 
-Outputs -> output/figures/si/{ecs,pca}/Resilience_heatmap_<var>_<scenario>.{pdf,png}
+Outputs -> figures/si/{ecs,pca}/Resilience_heatmap_<var>_<scenario>.{pdf,png}
 """
 import os
 import sys
@@ -47,21 +47,29 @@ tipping_sample_dict, _ = load_tipping()
 data_path = os.path.join(RESILIENCE_BASE, f"resilience_conditions_time{res_x}_temp{res_y}_rate{rate_str}")
 print(f"Loaded tipping ({len(tipping_sample_dict)}) + ECS ({len(ecs)}) + PCA ({len(pca)})", flush=True)
 
-for key, v in VARIANTS.items():
-    y_dec, y_rank, y_edges = build_axis(v["series"])
-    out_dir = os.path.join(FIG_DIR, "si", v["subdir"]); os.makedirs(out_dir, exist_ok=True)
-    for scenario_name in tqdm(main_scenarios, desc=f"{key} heatmaps"):
-        if scenario_name not in tipping_sample_dict:
-            continue
-        csv_path = os.path.join(data_path, f"resilience_{scenario_name}_time{res_x}_temp{res_y}_rate{rate_str}.csv")
-        if not os.path.exists(csv_path):
-            continue
-        df_res = pd.read_csv(csv_path)
-        da = tipping_sample_dict[scenario_name]["prob_any_tipping_sample"]
-        res_pivot = df_res.pivot_table(index="config", columns="run", values="resilience_cr")
-        resilience_cr = res_pivot.reindex(index=da.config.values, columns=da.run.values).values
-        d = compute_scenario(da, resilience_cr, y_dec, y_rank, teff_dec, teff_rank)
+# one y-axis per variant; one output dir per variant
+AXES = {key: build_axis(v["series"]) for key, v in VARIANTS.items()}
+OUT_DIRS = {key: os.path.join(FIG_DIR, "si", v["subdir"]) for key, v in VARIANTS.items()}
+for d_ in OUT_DIRS.values():
+    os.makedirs(d_, exist_ok=True)
 
+# loop scenarios OUTER so the multi-GB 09 CSV is read ONCE per scenario (3 cols,
+# deduped to (config, run)) and reused for every y-variant.
+for scenario_name in tqdm(main_scenarios, desc="ECS/PCA heatmaps"):
+    if scenario_name not in tipping_sample_dict:
+        continue
+    csv_path = os.path.join(data_path, f"resilience_{scenario_name}_time{res_x}_temp{res_y}_rate{rate_str}.csv")
+    if not os.path.exists(csv_path):
+        continue
+    df_res = (pd.read_csv(csv_path, usecols=["config", "run", "resilience_cr"])
+              .drop_duplicates(["config", "run"]))
+    da = tipping_sample_dict[scenario_name]["prob_any_tipping_sample"]
+    res_pivot = df_res.pivot_table(index="config", columns="run", values="resilience_cr")
+    resilience_cr = res_pivot.reindex(index=da.config.values, columns=da.run.values).values
+
+    for key, v in VARIANTS.items():
+        y_dec, y_rank, y_edges = AXES[key]
+        d = compute_scenario(da, resilience_cr, y_dec, y_rank, teff_dec, teff_rank)
         fig = plt.figure(figsize=(TWO_COL, TWO_COL * 8 / 11))
         gs = GridSpec(2, 3, width_ratios=[1.2, 4, 0.25], height_ratios=[4, 1.2], hspace=0.2, wspace=0.12)
         ax_heat = fig.add_subplot(gs[0, 1]); ax_left = fig.add_subplot(gs[0, 0], sharey=ax_heat)
@@ -70,8 +78,8 @@ for key, v in VARIANTS.items():
         ax_heat.set_title(get_scenario_type(scenario_name), fontsize=7, pad=3)
         ax_left.legend(loc="upper left", frameon=False); ax_bottom.legend(loc="upper right", frameon=False)
         safe = scenario_name.replace("/", "_")
-        fig.savefig(f"{out_dir}/Resilience_heatmap_{key}_{safe}.pdf", bbox_inches="tight")
-        fig.savefig(f"{out_dir}/Resilience_heatmap_{key}_{safe}.png", dpi=150, bbox_inches="tight")
+        fig.savefig(f"{OUT_DIRS[key]}/Resilience_heatmap_{key}_{safe}.pdf", bbox_inches="tight")
+        fig.savefig(f"{OUT_DIRS[key]}/Resilience_heatmap_{key}_{safe}.png", dpi=150, bbox_inches="tight")
         plt.close(fig)
 
 print("SI ECS/PCA heatmaps written.", flush=True)

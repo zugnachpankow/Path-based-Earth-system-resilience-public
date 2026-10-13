@@ -16,7 +16,7 @@ Panel (b) fragility diagonal: rank composite = 0.5·TCRE_pctrank + 0.5·(1 − T
 in 10 equal-width [0, 1] bins (same bins every scenario; computed once).
 
 Shared heatmap machinery lives in src/heatmap_common.py (reused by si/23). Heavy -> SLURM.
-Produces (output/figures/heatmaps): Resilience_heatmap_<scenario>.{pdf,png},
+Produces (figures/heatmaps): Resilience_heatmap_<scenario>.{pdf,png},
 resilience_fragility_diagonal_scenarios.{pdf,png}, heatmap_nz2050_fragility_combined.{pdf,png},
 combined_cache.pkl, median_ci_table.md, heatmap_peri_crosscheck.csv.
 """
@@ -62,6 +62,10 @@ teff_edges_desc = teff_edges_asc[::-1]      # x plotted high→low (left→right
 tipping_sample_dict, _ = load_tipping()
 fancy_titles, _c, _l, _m = build_naming(main_scenarios)
 data_path = os.path.join(RESILIENCE_BASE, f"resilience_conditions_time{res_x}_temp{res_y}_rate{rate_str}")
+# 09 per-scenario PERI (the published value) — the cross-check reference below
+_summary_csv = os.path.join(data_path, "summary",
+                            f"resilience_summary_time{res_x}_temp{res_y}_rate{rate_str}.csv")
+summary_peri = pd.read_csv(_summary_csv).set_index("scenario")["resilience"].to_dict()
 print(f"Loaded tipping ({len(tipping_sample_dict)}) + TCRE ({len(tcre)}) + T_eff ({len(teff)})", flush=True)
 
 
@@ -71,7 +75,10 @@ def _scenario_dict(scenario_name):
     csv_path = os.path.join(data_path, f"resilience_{scenario_name}_time{res_x}_temp{res_y}_rate{rate_str}.csv")
     if not os.path.exists(csv_path):
         return None
-    df_res = pd.read_csv(csv_path)
+    # the 09 CSV is per-(config, run, sample) (~84 M rows, several GB); resilience_cr is
+    # constant across sample, so read only the 3 needed columns and dedup to (config, run).
+    df_res = (pd.read_csv(csv_path, usecols=["config", "run", "resilience_cr"])
+              .drop_duplicates(["config", "run"]))
     da = tipping_sample_dict[scenario_name]["prob_any_tipping_sample"]
     res_pivot = df_res.pivot_table(index="config", columns="run", values="resilience_cr")
     resilience_cr = res_pivot.reindex(index=da.config.values, columns=da.run.values).values
@@ -109,12 +116,15 @@ for scenario_name in tqdm(main_scenarios, desc="Heatmaps"):
                     for i in range(N_DEC) for j in range(N_DEC) if np.isfinite(d["pivot"][i, j])])
     ci_table_rows.append({"scenario": get_scenario_type(scenario_name),
                           "median_95ci_width_pp": round(float(np.nanmedian(_ci.sum(axis=1))), 2) if _ci.size else np.nan})
+    # cross-check the count-weighted cell/bin means against the 09 summary PERI (the
+    # published value), not against the mean of the same array.
+    s09 = summary_peri.get(scenario_name, np.nan)
     crosscheck_rows.append({"scenario": get_scenario_type(scenario_name),
-                            "peri_09_overall_pct": round(d["peri_overall"] * 100, 4),
+                            "peri_09_summary_pct": round(s09 * 100, 4),
                             "peri_cells_pct": round(d["peri_cells"] * 100, 4),
                             "peri_frag_pct": round(d["peri_frag"] * 100, 4),
-                            "max_abs_diff_pp": round(max(abs(d["peri_cells"] - d["peri_overall"]),
-                                                         abs(d["peri_frag"] - d["peri_overall"])) * 100, 5)})
+                            "max_abs_diff_pp": round(max(abs(d["peri_cells"] - s09),
+                                                         abs(d["peri_frag"] - s09)) * 100, 5)})
     if scenario_name == "REMIND-MAgPIE_3.3-4.8___Net_Zero_2050":
         nz2050_data = d
     gc.collect()

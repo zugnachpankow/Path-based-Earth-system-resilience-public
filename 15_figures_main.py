@@ -52,7 +52,7 @@ print(f"Loaded running means: {len(running_mean_temps)} scenarios", flush=True)
 tipping_sample_dict, tipping_combined = load_tipping()
 print(f"Loaded tipping: {len(tipping_sample_dict)} scenarios", flush=True)
 
-# GFP / ECS / T@2100 per (scenario, config, run) — for the ECS-coloured variant
+# ECS / T@2100 per (scenario, config, run) — for the ECS-coloured variant
 df_params_all = load_df_params()
 print(f"Loaded df_params_all: {df_params_all.shape}", flush=True)
 
@@ -114,7 +114,7 @@ for _res_y, _rate, _sub in [
 
         climate_violation_time = (running_mean_temp.sel(timebounds=slice(res_x, None)) > _res_y)
         rate_of_change = running_mean_temp.diff(dim="timebounds").rolling(timebounds=10, center=True).mean()
-        rate_violation_time = (rate_of_change.sel(timebounds=slice(2000, res_x)) > _rate)
+        rate_violation_time = (rate_of_change.sel(timebounds=slice(2000, 2096)) > _rate)
         climate_violation = climate_violation_time.any(dim="timebounds")
         rate_violation    = rate_violation_time.any(dim="timebounds")
         resilient         = ~(climate_violation | rate_violation)

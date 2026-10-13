@@ -9,7 +9,7 @@ bars of the criterion combinations. Logic verbatim from 15_figures_main.py (C1 p
 
 Reads output/running_mean_temps.pkl (08) + output/tipping/*.nc (07). Heavy (running-mean
 pickle) -> submit via SLURM (run_31.sh).
-Output -> output/figures/si/si_trajectories_demands.{pdf,png}
+Output -> figures/si/si_trajectories_demands.{pdf,png}
 """
 import os
 import sys
@@ -57,7 +57,7 @@ def _row(row_i, res_y_c, rate_c, letter, subtitle):
     # ── criterion (verbatim from 15) ──
     climate_violation = (rm_all.sel(timebounds=slice(res_x, None)) > res_y_c).any("timebounds")
     roc = rm_all.diff("timebounds").rolling(timebounds=10, center=True).mean()
-    rate_violation = (roc.sel(timebounds=slice(2000, res_x)) > rate_c).any("timebounds")
+    rate_violation = (roc.sel(timebounds=slice(2000, 2096)) > rate_c).any("timebounds")
     resilient = ~(climate_violation | rate_violation)
     filtered_temp = rm_all.where(resilient, drop=True)
     non_resilient_temp = rm_all.where(~resilient, drop=True)

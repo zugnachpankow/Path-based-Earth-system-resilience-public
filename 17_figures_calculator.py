@@ -151,7 +151,7 @@ def _confirmator_candidate_co2(gain, disp_cols, ty=2035, region="World"):
 
 def _write_ambition_stats(res_by_start, res_by_rate):
     """Linear fits of the panel-a marginals (resilience vs start-year and vs decarb rate),
-    for the results text. Writes output/tables/calculator_ambition_stats.{csv,md} + prints."""
+    for the results text. Writes tables/calculator_ambition_stats.{csv,md} + prints."""
     s = linregress(res_by_start["start_year"], res_by_start["mean"])   # %pt per year
     r = linregress(res_by_rate["rate"], res_by_rate["mean"])           # %pt per %/yr
     gain_5yr_earlier = -s.slope * 5.0                                  # start earlier -> more resilient
@@ -335,17 +335,23 @@ def plot_calculator_combined(output_stem):
     for i in range(3):
         for j in range(3):
             if reach[i, j]:
-                col = "white" if Rpct[i, j] > 50 else "black"
+                # luminance rule on the (non-reversed) batlow colour at this value,
+                # matching panel a — batlow is light at high values, so a plain
+                # "white if >50" would put white text on light cells.
+                r, g, b, _ = cmcs.batlow(Rpct[i, j] / 100.0)
+                col = "black" if (0.299 * r + 0.587 * g + 0.114 * b) > 0.45 else "white"
                 ax_c.text(j + 0.5, i + 0.5, f"−{Rpct[i, j]:.0f}%\n(−{co2[i, j]:.1f} Gt)",
                           ha="center", va="center", fontsize=5.5, color=col, linespacing=1.2)
-            else:
+            elif status[i, j] == "max_cut_insufficient":
+                # not reachable even at a 99% cut -> hatch
                 ax_c.add_patch(plt.Rectangle((j, i), 1, 1, fill=False, hatch="////",
                                              edgecolor="0.55", linewidth=0.0, zorder=2.3))
-                if status[i, j] == "met_at_ndc":
-                    txt = "met at\nNDC"
-                else:  # max_cut_insufficient
-                    txt = f"max +{gainpp[i, j]:.1f} pt\n(99% cut)"
-                ax_c.text(j + 0.5, i + 0.5, txt, ha="center", va="center",
+                ax_c.text(j + 0.5, i + 0.5, f"max +{gainpp[i, j]:.1f} pt\n(99% cut)",
+                          ha="center", va="center", fontsize=5, color="0.3", linespacing=1.2)
+            else:  # met_at_ndc -> light fill, no hatch
+                ax_c.add_patch(plt.Rectangle((j, i), 1, 1, facecolor="0.9",
+                                             edgecolor="none", zorder=2.2))
+                ax_c.text(j + 0.5, i + 0.5, "met at\nNDC", ha="center", va="center",
                           fontsize=5, color="0.3", linespacing=1.2)
     ax_c.set_xlim(0, 3); ax_c.set_ylim(0, 3); ax_c.set_aspect("auto")
     ax_c.set_xticks(range(4)); ax_c.set_xticklabels([f"{v:.2f}" for v in teff_edges])

@@ -7,7 +7,7 @@ feedback parameters κ1 = ocean_heat_transfer[0] and ε = deep_ocean_efficacy
 figure documents the construction: PC1 loadings, explained variance, and the score vs
 ECS. It matches the per-config PCA computed in 11 (output/feedback/config_pca.csv).
 
-Light — reads two CSVs. Output -> output/figures/si/si_feedback_quality.{pdf,png}
+Light — reads two CSVs. Output -> figures/si/si_feedback_quality.{pdf,png}
 """
 import os
 import sys

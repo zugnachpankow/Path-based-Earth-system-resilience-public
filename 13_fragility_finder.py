@@ -106,7 +106,7 @@ df_forcing = pd.read_csv(FORCING_FILE)
 lhs_params = sample_lhs_params(n_samples=N_SAMPLES, seed=FINDER_LHS_SEED)
 
 
-def _eval(R, label, config_subset, sample_subset):
+def _eval(R, label, config_subset, sample_subset, run_base=True):
     iter_dir = os.path.join(WORKSPACE, MODE, label)
     return evaluate_candidate(
         R, df_emissions, years, year_cols,
@@ -115,7 +115,7 @@ def _eval(R, label, config_subset, sample_subset):
         n_runs=N_RUNS, n_samples=N_SAMPLES,
         temp_threshold=TEMP_THRESHOLD, rate_threshold=RATE_THRESHOLD,
         year_target=YEAR_TARGET,
-        config_subset=config_subset, sample_subset=sample_subset,
+        config_subset=config_subset, sample_subset=sample_subset, run_base=run_base,
         lhs_params=lhs_params,
         candidate_name=f"NDC_calc__{MODE}_{label}_r{R:.6f}",
     )
@@ -134,13 +134,13 @@ def find_reduction(gain, tag, config_subset, sample_subset):
     Returns a dict with status in {met_at_ndc, max_cut_insufficient, ok}, the reduction
     fraction and the achieved gain / co2 at that R (reported at the converged R).
     """
-    r0 = _eval(0.0, f"{tag}_r0", config_subset, sample_subset)
+    r0 = _eval(0.0, f"{tag}_r0", config_subset, sample_subset, run_base=False)
     g0 = r0["achieved_resilience"] - baseline_full
     if g0 >= gain:
         print(f"    met at NDC: gain(0)={g0:.5f} ≥ {gain}; R*=0", flush=True)
         return dict(status="met_at_ndc", reduction_frac=0.0, achieved_gain=g0, res=r0)
 
-    rhi = _eval(BISECT_HI, f"{tag}_rhi", config_subset, sample_subset)
+    rhi = _eval(BISECT_HI, f"{tag}_rhi", config_subset, sample_subset, run_base=False)
     ghi = rhi["achieved_resilience"] - baseline_full
     if ghi < gain:
         print(f"    not reachable: gain(0.99)={ghi:.5f} < {gain}; status=max_cut_insufficient", flush=True)
@@ -149,7 +149,7 @@ def find_reduction(gain, tag, config_subset, sample_subset):
     lo, hi = BISECT_LO, BISECT_HI
     for it in range(MAX_ITER):
         mid = 0.5 * (lo + hi)
-        g = _eval(mid, f"{tag}_it{it:02d}", config_subset, sample_subset)["achieved_resilience"] - baseline_full
+        g = _eval(mid, f"{tag}_it{it:02d}", config_subset, sample_subset, run_base=False)["achieved_resilience"] - baseline_full
         if g < gain:
             lo = mid
         else:
@@ -158,7 +158,7 @@ def find_reduction(gain, tag, config_subset, sample_subset):
         if hi - lo < TOL:
             break
     conv = 0.5 * (lo + hi)
-    res = _eval(conv, f"{tag}_converged", config_subset, sample_subset)
+    res = _eval(conv, f"{tag}_converged", config_subset, sample_subset, run_base=False)
     return dict(status="ok", reduction_frac=conv,
                 achieved_gain=res["achieved_resilience"] - baseline_full, res=res)
 

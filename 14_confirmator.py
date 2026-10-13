@@ -27,9 +27,11 @@ Outputs (output/calculator/confirmator/):
 import os
 import sys
 import glob
+import pickle
 
 import numpy as np
 import pandas as pd
+import xarray as xr
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(_HERE, "src"))
@@ -37,7 +39,7 @@ os.chdir(_HERE)
 
 from calculator import (
     evaluate_candidate, assert_configs_match_ensemble, cell_vs_full_gain_bootstrap,
-    N_FAIR_RUNS_FINAL, N_TIPPING_SAMPLES_FINAL,
+    resilience_tensor, N_FAIR_RUNS_FINAL, N_TIPPING_SAMPLES_FINAL,
 )
 from tipping_params import sample_lhs_params
 from fair_config import FAIR_PARAMS, SPECIES_CONFIGS_NGFS
@@ -58,6 +60,7 @@ BASE_SCENARIO_CLEAN = BASE_SCENARIO.replace("(", "").replace(")", "")
 
 EMISSIONS_FILE = "data/processed/NGFS_historic_merged_extended_to_2110.csv"
 FORCING_FILE   = "data/processed/NGFS_forcing.csv"
+RUNNING_MEANS_PATH = "output/running_mean_temps.pkl"   # 08 (for the external T_full)
 PARAMS_FILE    = FAIR_PARAMS            # single calibration (v1.4.0) via src/fair_config
 SPECIES_FILE   = SPECIES_CONFIGS_NGFS
 WORKSPACE      = "output/calculator/confirmator"
@@ -118,23 +121,26 @@ if FRAGILITY_MODE:
             out[var] = float(v.values.min()) if not v.empty else np.nan
         return out["CO2 FFI"], out["CO2 AFOLU"]
 
-    # full-ensemble NDC resilience tensor at full resolution (R=0, no subsets) — the
-    # reference for every cell's unpaired gain bootstrap; also cross-checks the 09 value.
-    base = evaluate_candidate(
-        0.0, df_emissions, years, year_cols, BASE_SCENARIO, FRAG_TARGET_YEAR, df_forcing,
-        PARAMS_FILE, SPECIES_FILE, os.path.join(WORKSPACE, _mode, "baseline_full"),
-        n_runs=N_FAIR_RUNS_FINAL, n_samples=N_TIPPING_SAMPLES_FINAL,
-        temp_threshold=TEMP_THRESHOLD, rate_threshold=RATE_THRESHOLD, year_target=YEAR_TARGET,
-        lhs_params=lhs_params, return_tensors=True, candidate_name="NDC_calc__baseline_full",
-    )
-    T_full = base["T_ndc"]
+    # full-ensemble NDC resilience tensor — the reference for every cell's unpaired gain
+    # bootstrap. Built directly from the stored pipeline outputs (08 running means + 07
+    # NDC tipping), NOT by re-running FAIR+tipping: evaluate_candidate(0.0, …) would redo
+    # 2 x 84.1M tipping solves (~680 CPU-h) that 07/09 already computed. Its mean must
+    # still reproduce the 09 NDC summary (tol 1e-6).
+    with open(RUNNING_MEANS_PATH, "rb") as _fh:
+        _rmt = pickle.load(_fh)
+    _rmt = {k.replace("(", "").replace(")", ""): v for k, v in _rmt.items()}
+    _pas_ndc = xr.open_dataset(
+        os.path.join("output/tipping", f"{BASE_SCENARIO_CLEAN}_tipping_probabilities.nc")
+    )["prob_any_tipping_sample"]
+    T_full = resilience_tensor(_rmt[BASE_SCENARIO_CLEAN], _pas_ndc,
+                               TEMP_THRESHOLD, RATE_THRESHOLD, YEAR_TARGET)
     full_cfg_pos = {c: k for k, c in enumerate(T_full.config.values)}   # config id -> full-grid row
     n_samp_full = T_full.sizes["sample"]
-    _ndc_diff = base["ndc_resilience"] - baseline_resilience
-    print(f"NDC cross-check: calculator {base['ndc_resilience']:.9f} vs 09 "
+    _ndc_diff = float(np.nanmean(T_full.values)) - baseline_resilience
+    print(f"NDC cross-check: T_full mean {float(np.nanmean(T_full.values)):.9f} vs 09 "
           f"{baseline_resilience:.9f} (diff {_ndc_diff:+.2e})", flush=True)
     if abs(_ndc_diff) > 1e-6:
-        raise AssertionError("calculator NDC resilience != 09 baseline (see cross-check above).")
+        raise AssertionError("T_full mean != 09 baseline (see cross-check above).")
 
     if _mode == "grid":
         if not os.path.exists(GRID_FINDER_CSV):
@@ -165,7 +171,7 @@ if FRAGILITY_MODE:
                 n_runs=N_FAIR_RUNS_FINAL, n_samples=N_TIPPING_SAMPLES_FINAL,
                 temp_threshold=TEMP_THRESHOLD, rate_threshold=RATE_THRESHOLD, year_target=YEAR_TARGET,
                 config_subset=cfg_subset, sample_subset=samp_subset, lhs_params=lhs_params,
-                return_tensors=True, candidate_name=cand_name,
+                run_base=False, return_tensors=True, candidate_name=cand_name,
             )
             # shared-unit positions on the full grid: cell configs (by id) × its T_eff tercile samples
             cfg_pos = np.array([full_cfg_pos[c] for c in res["T_cand"].config.values])
@@ -227,7 +233,7 @@ if FRAGILITY_MODE:
                 n_runs=N_FAIR_RUNS_FINAL, n_samples=N_TIPPING_SAMPLES_FINAL,
                 temp_threshold=TEMP_THRESHOLD, rate_threshold=RATE_THRESHOLD, year_target=YEAR_TARGET,
                 config_subset=cfg_subset, lhs_params=lhs_params,
-                return_tensors=True, candidate_name=cand_name,
+                run_base=False, return_tensors=True, candidate_name=cand_name,
             )
             # tcre windows use all samples; cell is a config subset over the full 1000 samples
             cfg_pos = np.array([full_cfg_pos[c] for c in res["T_cand"].config.values])

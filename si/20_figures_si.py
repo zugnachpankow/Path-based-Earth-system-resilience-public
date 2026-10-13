@@ -12,7 +12,7 @@
 Reads output/feedback/df_params_all.pkl (slim: scenario, config, run, ecs, temp) and
 config_pca.csv — light enough for the login node.
 
-Outputs (output/figures/si/):
+Outputs (figures/si/):
   si_ecs_histogram.{pdf,png}
   si_ecs_pca_correlation.{pdf,png}
 """
