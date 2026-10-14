@@ -17,7 +17,7 @@ from scipy.integrate import solve_ivp
 from tqdm import trange
 
 from tipping import Earth_System                       # the exact model compute_tip_prob uses
-from tipping_params import param_bounds, pf_bounds, T_END
+from tipping_params import param_bounds, pf_bounds, T_END, all_bounds, sample_lhs_params
 
 n_jobs = int(os.environ.get("SLURM_CPUS_PER_TASK", len(os.sched_getaffinity(0))))
 
@@ -105,4 +105,58 @@ def compute_t_eff(params, n_samples, lo=0.0, hi=6.0, tol=0.005, t_end=T_END,
     df.index.name = "sample"
     for k in ("limits_gis", "limits_thc", "limits_wais", "limits_amaz"):
         df[k] = np.asarray(params[k])[:n_samples]
+    return df
+
+
+# ── T_eff under central literature values (Armstrong McKay et al. 2022) ────────────
+# Thresholds + timescales are fixed to the central estimates; the interactions (pf_*)
+# and the coupling strength keep their LHS values (same bounds and sign convention as
+# the main LHS). The model path / bisection is unchanged (compute_t_eff above).
+CENTRAL_LIT = {
+    "limits_gis": 1.5, "limits_wais": 1.5, "limits_thc": 4.0, "limits_amaz": 3.5,   # [°C]
+    "gis_time": 10000.0, "wais_time": 2000.0, "thc_time": 50.0, "amaz_time": 100.0,  # [yr]
+}
+
+
+def central_lit_params(n_samples=1000, seed=2468):
+    """LHS params (new fixed seed) with the thresholds/timescales overwritten to the
+    AM2022 central estimates; pf_* and strength keep their LHS draws. Asserts in bounds."""
+    p = sample_lhs_params(n_samples=n_samples, seed=seed)
+    for k, v in CENTRAL_LIT.items():
+        lo, hi = all_bounds[k]
+        assert lo <= v <= hi, f"central-lit {k}={v} outside tipping_params bounds [{lo}, {hi}]"
+        p[k] = np.full(n_samples, float(v))
+    return p
+
+
+def compute_t_eff_central_lit(save_path, n_samples=1000, seed=2468, n_jobs=n_jobs):
+    """Compute (and cache to ``save_path``) T_eff under the central-lit thresholds/timescales,
+    plus a no-interaction (strength=0) reference. Prints the summary + monotonicity check."""
+    p = central_lit_params(n_samples, seed)
+    df = compute_t_eff(p, n_samples, n_jobs=n_jobs)
+    os.makedirs(os.path.dirname(save_path), exist_ok=True)
+    df.to_csv(save_path)
+
+    # no-interaction reference: strength -> 0 so the couplings vanish (single run)
+    p0 = {k: np.array([np.asarray(v)[0]]) for k, v in p.items()}
+    p0["strength"] = np.array([0.0])
+    noint, noint_flag = effective_tipping_temperature(p0, 0)
+
+    te = df["T_eff"].values
+    print(f"[central-lit] n={n_samples} seed={seed} -> {save_path}", flush=True)
+    print(f"  median={np.nanmedian(te):.3f}  5-95%=[{np.nanpercentile(te, 5):.3f}, {np.nanpercentile(te, 95):.3f}]  "
+          f"min={np.nanmin(te):.3f}  max={np.nanmax(te):.3f}", flush=True)
+    print(f"  no-interaction (strength=0) T_eff = {noint:.3f} ({noint_flag})", flush=True)
+
+    # monotonicity on 20 random samples (0.05 degC grid, 0..6)
+    rng = np.random.default_rng(0)
+    idx = rng.choice(n_samples, 20, replace=False)
+    grid = np.arange(0.0, 6.0 + 1e-9, 0.05)
+    n_eval = int(np.ceil(T_END / 50.0)) + 1
+    t_eval = np.linspace(0, T_END, n_eval)
+    nonmono = sum(
+        np.any(np.diff([1 if sample_tips_at(p, int(i), g, t_eval=t_eval) else 0 for g in grid]) < 0)
+        for i in idx
+    )
+    print(f"  monotonicity (20 samples, 0.05 grid): non-monotone = {int(nonmono)}", flush=True)
     return df

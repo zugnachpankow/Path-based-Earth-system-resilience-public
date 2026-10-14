@@ -203,7 +203,7 @@ for _res_y, _rate, _sub in [
                 _text_y = _ci[1] + 0.8
             else:
                 _text_y = val + 0.8
-            ax_bars.text(xi, _text_y, f"{val:.0f}%", ha="center", va="bottom",
+            ax_bars.text(xi, _text_y, f"{val:.1f}", ha="center", va="bottom",
                          fontsize=5, fontweight=weight)
 
         ax_bars.set_xlim(-0.5, n_combos - 0.5)
@@ -409,7 +409,7 @@ for _res_y, _rate, _sub in [
                     _ty_e = _ci_e[1] + 0.8
                 else:
                     _ty_e = val + 0.8
-                ax_bars_e.text(xi, _ty_e, f"{val:.0f}%", ha="center", va="bottom",
+                ax_bars_e.text(xi, _ty_e, f"{val:.1f}", ha="center", va="bottom",
                                fontsize=5, fontweight=weight_e)
 
             ax_bars_e.set_xlim(-0.5, n_combos - 0.5)

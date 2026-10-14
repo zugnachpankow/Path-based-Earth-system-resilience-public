@@ -37,7 +37,8 @@ from figures_common import time_to_net_zero_yr
 
 OUT_DIR = os.path.join("tables"); os.makedirs(OUT_DIR, exist_ok=True)
 
-SUMMARY_CSV = ("output/resilience/resilience_conditions_time2100_temp1.5_rate04/"
+_RBASE = os.environ.get("PERI_RESILIENCE_BASE", "output/resilience")   # switchable to resilience_alt
+SUMMARY_CSV = (f"{_RBASE}/resilience_conditions_time2100_temp1.5_rate04/"
                "summary/resilience_summary_time2100_temp1.5_rate04.csv")
 CONF_1    = "output/calculator/confirmator/confirmed_results_gain0.01.csv"
 CONF_10   = "output/calculator/confirmator/confirmed_results_gain0.1.csv"

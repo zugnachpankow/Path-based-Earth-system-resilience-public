@@ -28,7 +28,8 @@ from heatmap_common import build_axis, compute_scenario, draw_heatmap
 
 plt.rcParams["hatch.linewidth"] = 0.4
 FEEDBACK_DIR = os.path.join(os.path.dirname(RESILIENCE_BASE), "feedback")
-X_LABEL = "Effective tipping temperature (°C)"
+X_LABEL = "Tipping susceptibility\nEffective tipping temperature [°C]"
+MARGINAL_LABEL = "Path-based\nresilience [%]"
 
 # scenario-independent axes
 teff = pd.read_csv(os.path.join(FEEDBACK_DIR, "t_eff_lhs1000.csv"), index_col="sample")["T_eff"]
@@ -39,8 +40,8 @@ ecs = pd.read_csv(os.path.join(FEEDBACK_DIR, "tcre.csv"), index_col="config")["E
 pca = pd.read_csv(os.path.join(FEEDBACK_DIR, "config_pca.csv"), index_col="config")["pca_score"]
 
 VARIANTS = {
-    "ecs": dict(series=ecs, label="ECS (°C)", subdir="ecs"),
-    "pca": dict(series=pca, label="Climate-feedback PCA score (κ1, ε)", subdir="pca"),
+    "ecs": dict(series=ecs, label="Climate sensitivity\nECS [K]", subdir="ecs"),
+    "pca": dict(series=pca, label="Climate feedback score\nPC1 of κ1 and ε [–]", subdir="pca"),
 }
 
 tipping_sample_dict, _ = load_tipping()
@@ -77,6 +78,7 @@ for scenario_name in tqdm(main_scenarios, desc="ECS/PCA heatmaps"):
         draw_heatmap(ax_heat, ax_left, ax_bottom, ax_cbar, d, fig, y_edges, teff_edges_desc, v["label"], X_LABEL)
         ax_heat.set_title(get_scenario_type(scenario_name), fontsize=7, pad=3)
         ax_left.legend(loc="upper left", frameon=False); ax_bottom.legend(loc="upper right", frameon=False)
+        fig.text(0.16, 0.185, MARGINAL_LABEL, ha="left", va="bottom", fontsize=7)   # shared marginal label
         safe = scenario_name.replace("/", "_")
         fig.savefig(f"{OUT_DIRS[key]}/Resilience_heatmap_{key}_{safe}.pdf", bbox_inches="tight")
         fig.savefig(f"{OUT_DIRS[key]}/Resilience_heatmap_{key}_{safe}.png", dpi=150, bbox_inches="tight")

@@ -48,9 +48,21 @@ HEATMAP_DIR = os.path.join(FIG_DIR, "heatmaps")
 os.makedirs(HEATMAP_DIR, exist_ok=True)
 
 FEEDBACK_DIR = os.path.join(os.path.dirname(RESILIENCE_BASE), "feedback")
-Y_LABEL = "TCRE (K per 1000 PgC)"
-X_LABEL = "Effective tipping temperature (°C)"
-FRAG_LABEL = "Earth-system fragility (rank composite)"
+# axis labels: "talking" first line, quantity + unit in [] on the second
+Y_LABEL = "Climate and carbon sensitivity\nTCRE [K per 1000 PgC]"
+X_LABEL = "Tipping susceptibility\nEffective tipping temperature [°C]"
+FRAG_LABEL = "Earth system fragility\n(Rank composite)"
+MARGINAL_LABEL = "Path-based\nresilience [%]"   # shared corner label for the two marginals
+
+
+def _legend_name(sc):
+    """Panel-b legend label, at most two lines."""
+    return {
+        "Current Policies": "Current\nPolicies",
+        "Net Zero 2050": "Net Zero\n2050",
+        "Below 2°C": "Below\n2 °C",
+        "Low Demand": "Low\nDemand",
+    }.get(get_scenario_type(sc), get_scenario_type(sc))
 
 # ── scenario-independent axes (computed once) ───────────────────────────────────
 tcre = pd.read_csv(os.path.join(FEEDBACK_DIR, "tcre.csv"), index_col="config")["TCRE"]
@@ -106,6 +118,7 @@ for scenario_name in tqdm(main_scenarios, desc="Heatmaps"):
     draw_heatmap(ax_heat, ax_left, ax_bottom, ax_cbar, d, fig, tcre_edges, teff_edges_desc, Y_LABEL, X_LABEL)
     ax_heat.set_title(get_scenario_type(scenario_name), fontsize=7, pad=3)
     ax_left.legend(loc="upper left", frameon=False); ax_bottom.legend(loc="upper right", frameon=False)
+    fig.text(0.16, 0.185, MARGINAL_LABEL, ha="left", va="bottom", fontsize=7)   # shared marginal label
     fig.savefig(f"{HEATMAP_DIR}/Resilience_heatmap_{safe_name}.pdf", bbox_inches="tight")
     fig.savefig(f"{HEATMAP_DIR}/Resilience_heatmap_{safe_name}.png", dpi=150, bbox_inches="tight")
     plt.close(fig)
@@ -169,6 +182,20 @@ print("Saved resilience_fragility_diagonal_scenarios.{pdf,png}", flush=True)
 # combined figure: (a) NZ2050 heatmap + (b) fragility diagonal
 # ══════════════════════════════════════════════════════════════════════════════
 if nz2050_data is not None:
+    # ── caption numbers (item 9): configs per TCRE decile + Clopper-Pearson one-sided
+    # 97.5% bounds for that n, and how many NZ2050 cells are exactly 0 vs "<0.1" ──────
+    _cfg = nz2050_data["cfg_per_row"]
+    _nmin, _nmax = int(_cfg.min()), int(_cfg.max())
+    _piv = nz2050_data["pivot"]
+    _n_zero = int(np.nansum(_piv == 0.0))
+    _n_sub = int(np.nansum((_piv > 0.0) & (_piv < 0.0005)))
+    print(f"[caption] configs per TCRE decile: min={_nmin}, max={_nmax}", flush=True)
+    for _n in sorted({_nmin, _nmax}):
+        _up = (1.0 - 0.025 ** (1.0 / _n)) * 100.0     # one-sided 97.5% CP upper bound (k=0)
+        _lo = (0.025 ** (1.0 / _n)) * 100.0           # one-sided 97.5% CP lower bound (k=n, for "100")
+        print(f"[caption]   n={_n}: CP upper (0/<0.1 cells) = {_up:.3f}%, CP lower (100 cells) = {_lo:.3f}%", flush=True)
+    print(f"[caption] NZ2050 panel cells: exactly 0 = {_n_zero}, '<0.1' (0<val<0.05%) = {_n_sub}", flush=True)
+
     fig_comb = plt.figure(figsize=(TWO_COL, TWO_COL * 9 / 18))
     sf_a, sf_b = fig_comb.subfigures(1, 2, width_ratios=[1.3, 1.0], wspace=0.12)
     gs_a = GridSpec(2, 3, width_ratios=[1.2, 4, 0.25], height_ratios=[4, 1.2],
@@ -180,10 +207,11 @@ if nz2050_data is not None:
     ax_a_heat.plot([0, N_DEC], [0, N_DEC], color="grey", linestyle="--", linewidth=2.0, alpha=0.8, zorder=2.5)
     ax_a_left.legend(loc="upper left", frameon=False, fontsize=5)
     ax_a_bottom.legend(loc="upper right", frameon=False, fontsize=5)
+    sf_a.text(0.10, 0.19, MARGINAL_LABEL, ha="left", va="bottom", fontsize=6)   # shared marginal label
     _lbl = mtrans.ScaledTranslation(9 / 72, 0, fig_comb.dpi_scale_trans)
     ax_a_left.text(0.0, 1.02, "a", transform=ax_a_left.transAxes, fontsize=8, fontweight="bold",
                    va="bottom", ha="left", clip_on=False)
-    ax_a_left.text(0.0, 1.02, "Net zero 2050", transform=ax_a_left.transAxes + _lbl, fontsize=6,
+    ax_a_left.text(0.0, 1.02, "Net Zero 2050", transform=ax_a_left.transAxes + _lbl, fontsize=6,
                    fontstyle="italic", va="bottom", ha="left", color="#444444", clip_on=False)
 
     ax_b = sf_b.add_subplot(111)
@@ -192,9 +220,20 @@ if nz2050_data is not None:
             continue
         col_b, ls_b = _styles.get(sc_name, ("grey", "-"))
         ax_b.plot(res_b["fragility_mid"], res_b["mean"] * 100, color=col_b, linewidth=1.5,
-                  linestyle=ls_b, label=get_scenario_type(sc_name).replace(" ", "\n"), zorder=3)
+                  linestyle=ls_b, label=_legend_name(sc_name), zorder=3)
     ax_b.set_xlabel(FRAG_LABEL); ax_b.set_ylabel("Path-based resilience [%]")
-    ax_b.set_xlim(0, 1); ax_b.set_ylim(0, 100); ax_b.grid(True, alpha=0.3); ax_b.legend(frameon=False, fontsize=5)
+    ax_b.set_xlim(0, 1); ax_b.set_ylim(0, 100); ax_b.grid(True, alpha=0.3)
+    # longer handles so dash / dash-dot patterns show at least one full period
+    ax_b.legend(frameon=False, fontsize=5, handlelength=3.75)
+    # dashed-grey "Heatmap diagonal" caption anchored just under the x-label's bbox
+    # (y in label-artist coords: 0 = label bottom), so it tracks the two-line label.
+    _xl = ax_b.xaxis.label
+    ax_b.annotate("", xy=(0.97, -0.3), xytext=(0.03, -0.3),
+                  xycoords=("axes fraction", _xl), textcoords=("axes fraction", _xl),
+                  annotation_clip=False, arrowprops=dict(arrowstyle="->", color="grey", lw=2.0, linestyle="--"))
+    ax_b.annotate("Heatmap diagonal", xy=(0.5, -0.3), xycoords=("axes fraction", _xl),
+                  fontsize=5, color="grey", fontstyle="italic", ha="center", va="center",
+                  bbox=dict(boxstyle="square,pad=0.15", fc="white", ec="none"), annotation_clip=False)
     ax_b.text(0.0, 1.02, "b", transform=ax_b.transAxes, fontsize=8, fontweight="bold",
               va="bottom", ha="left", clip_on=False)
     ax_b.text(0.0, 1.02, "All scenarios", transform=ax_b.transAxes + _lbl, fontsize=6,

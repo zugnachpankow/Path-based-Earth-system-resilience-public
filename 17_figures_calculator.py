@@ -53,8 +53,9 @@ def _cell_label(val_pct, n=N_CP):
     return f"{val_pct:.1f}"
 
 # ── paths (cleaned pipeline) ───────────────────────────────────────────────────
+_RBASE = os.environ.get("PERI_RESILIENCE_BASE", "output/resilience")   # switchable to resilience_alt
 SUMMARY_CSV = (
-    f"output/resilience/resilience_conditions_time{res_x}_temp{res_y}_rate{rate_str}/"
+    f"{_RBASE}/resilience_conditions_time{res_x}_temp{res_y}_rate{rate_str}/"
     f"summary/resilience_summary_time{res_x}_temp{res_y}_rate{rate_str}.csv"
 )
 RESULTS_1PCT   = "output/calculator/confirmator/confirmed_results_gain0.01.csv"

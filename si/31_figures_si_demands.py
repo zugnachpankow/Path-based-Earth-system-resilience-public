@@ -132,7 +132,7 @@ def _row(row_i, res_y_c, rate_c, letter, subtitle):
         hatch = "xx" if is_full else (hatch_map[key[0]] if len(key) == 1 else None)
         ax_bars.bar(xi, val, color=combo_color(key, pal), edgecolor="black", linewidth=0.5,
                     hatch=hatch, width=0.7, zorder=3)
-        ax_bars.text(xi, val + 0.8, f"{val:.0f}%", ha="center", va="bottom", fontsize=5,
+        ax_bars.text(xi, val + 0.8, f"{val:.1f}", ha="center", va="bottom", fontsize=5,
                      fontweight="bold" if is_full else "normal")
     ax_bars.set_xlim(-0.5, n_combos - 0.5); ax_bars.set_ylim(0, 115); ax_bars.set_xticks([])
     ax_bars.set_ylabel("Path-based resilience [%]")

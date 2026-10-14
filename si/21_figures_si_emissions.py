@@ -96,7 +96,7 @@ for sc in ssp_list:
     sel = maskr & np.isfinite(y)
     col, ls = _style_for(sc)
     axa.plot(yrr[sel], y[sel], color=col, linestyle=ls, lw=1.2, label=get_scenario_type(sc), zorder=3)
-axa.legend(frameon=False, fontsize=4.5, ncol=1, loc="upper left")
+# scenario legends moved to a shared strip below the figure (declutters the panels)
 
 # (b) NGFS families
 scen = [s for s in ngfs["scenario"].unique()
@@ -105,7 +105,6 @@ for sc in scen:
     y = _co2_series(ngfs, sc, yc, "CO2 FFI", "CO2 AFOLU")
     col, ls = _style_for(sc)
     axb.plot(yrs[mask], y[mask], color=col, linestyle=ls, lw=1.2, label=get_scenario_type(sc), zorder=3)
-axb.legend(frameon=False, fontsize=4.5, ncol=1, loc="upper right")
 
 # (c) branch-offs, coloured by reduction rate
 rates = sorted({float(re.search(r"_r(\d+\.?\d*)", s).group(1)) for s in bo_scen
@@ -119,7 +118,6 @@ for sc in bo_scen:
     axc.plot(yrsb[maskb], y[maskb], color=cmap(norm(float(m.group(1)))), lw=1.0, alpha=0.85, zorder=2)
 y_cp = _co2_series(ngfs, "REMIND-MAgPIE_3.3-4.8___Current_Policies", yc, "CO2 FFI", "CO2 AFOLU")
 axc.plot(yrs[mask], y_cp[mask], color="black", lw=1.4, label="Current Policies (base)", zorder=4)
-axc.legend(frameon=False, fontsize=4.5, loc="upper right")
 sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm); sm.set_array([])
 cb = fig.colorbar(sm, ax=axc, fraction=0.046, pad=0.02)
 cb.set_label("Reduction rate [fraction yr$^{-1}$]", fontsize=6); cb.ax.tick_params(labelsize=5)
@@ -133,7 +131,15 @@ for k, ax in enumerate((axa, axb, axc)):
     ax.text(0.0, 1.03, _titles[k], transform=ax.transAxes + _lbl_off, fontsize=6,
             fontstyle="italic", va="bottom", ha="left", color="#444444", clip_on=False)
 axb.set_ylabel(YLABEL)   # single y-label on the middle panel (panels have independent y-lims)
-fig.tight_layout()
+fig.tight_layout(rect=[0, 0.24, 1, 1])   # reserve the bottom for the shared legend
+# one shared legend below (SSPs + NGFS families + the branch-off base line), deduped by label
+_h, _l, _seen = [], [], set()
+for _ax in (axa, axb, axc):
+    for h, l in zip(*_ax.get_legend_handles_labels()):
+        if l not in _seen:
+            _seen.add(l); _h.append(h); _l.append(l)
+fig.legend(_h, _l, loc="lower center", bbox_to_anchor=(0.5, 0.06), ncol=6,
+           frameon=False, fontsize=5, columnspacing=1.2, handlelength=1.8)
 for ext in (".pdf", ".png"):
     fig.savefig(os.path.join(OUT_DIR, "si_emissions_combined" + ext), dpi=300, bbox_inches="tight")
 plt.close(fig)

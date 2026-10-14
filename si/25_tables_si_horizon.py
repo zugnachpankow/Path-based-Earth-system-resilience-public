@@ -33,10 +33,11 @@ from figures_common import get_scenario_type, ssp_scenarios
 
 RM_FILE  = "output/running_mean_temps.pkl"
 TIP_DIR  = "output/tipping"
-VALID_CSV = "output/resilience/horizon_validation.csv"
+_RBASE = os.environ.get("PERI_RESILIENCE_BASE", "output/resilience")   # switchable to resilience_alt
+VALID_CSV = f"{_RBASE}/horizon_validation.csv"
 # the 09 summary encodes the current rate window; a VALID_CSV older than it is stale
 # (e.g. computed before the 2000–2096 rate-window fix) and must be recomputed.
-SUMMARY_CSV = ("output/resilience/resilience_conditions_time2100_temp1.5_rate04/"
+SUMMARY_CSV = (f"{_RBASE}/resilience_conditions_time2100_temp1.5_rate04/"
                "summary/resilience_summary_time2100_temp1.5_rate04.csv")
 TABLE_DIR = "tables"
 

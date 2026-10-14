@@ -41,7 +41,7 @@ FAIR_PARAMS_FILE   = FAIR_PARAMS   # single calibration (v1.4.0) via src/fair_co
 # in its own subdir by 10_sensitivity so cutoffs can be compared in an SI.
 SOBOL_RATE_DIR     = "rate0.025_0.055"
 SENS_DIR_SOBOL     = str(OUTPUT / "sensitivity" / SOBOL_RATE_DIR) + os.sep
-RESILIENCE_BASE    = str(OUTPUT / "resilience")
+RESILIENCE_BASE    = os.environ.get("PERI_RESILIENCE_BASE", str(OUTPUT / "resilience"))
 FIG_DIR            = str(REPO / "figures")
 TABLE_DIR          = str(REPO / "tables")
 

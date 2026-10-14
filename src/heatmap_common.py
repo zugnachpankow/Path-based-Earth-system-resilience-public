@@ -26,6 +26,23 @@ fragility_edges = np.linspace(0.0, 1.0, N_FRAG + 1)
 fragility_mids  = 0.5 * (fragility_edges[:-1] + fragility_edges[1:])
 
 
+def cell_label(val):
+    """Heatmap cell text (val is a resilience fraction in [0, 1]); distinguishes an
+    exact 0 / 1 from a rounded one:
+      exactly 0            -> "0"
+      exactly 1            -> "100"
+      0 < val < 0.0005     -> "<0.1"   (would round to 0.0 but is not exactly 0)
+      otherwise            -> one decimal of the percentage.
+    """
+    if val == 0.0:
+        return "0"
+    if val == 1.0:
+        return "100"
+    if val < 0.0005:
+        return "<0.1"
+    return f"{100.0 * val:.1f}"
+
+
 def build_axis(series):
     """(decile idx per key, percentile rank per key, ascending physical decile edges)."""
     dec = pd.qcut(series, N_DEC, labels=False)
@@ -112,7 +129,7 @@ def draw_heatmap(ax_heat, ax_left, ax_bottom, ax_cbar, d, fig,
     X, Y = np.meshgrid(np.arange(N_DEC + 1), np.arange(N_DEC + 1))
     pcm = ax_heat.pcolormesh(X, Y, Z, cmap=colormap, vmin=0, vmax=100, shading="flat")
     if ax_cbar is not None:
-        fig.colorbar(pcm, cax=ax_cbar, label="Average path-based\nresilience [%]")
+        fig.colorbar(pcm, cax=ax_cbar, label="Path-based resilience [%]")
 
     for i in range(N_DEC):
         for j in range(N_DEC):
@@ -122,12 +139,12 @@ def draw_heatmap(ax_heat, ax_left, ax_bottom, ax_cbar, d, fig,
                     _hatch(ax_heat, i, j)
                 r, g, b, _ = colormap(norm(val * 100))
                 lum = 0.299 * r + 0.587 * g + 0.114 * b
-                ax_heat.text(j + 0.5, i + 0.5, f"{100.0 * val:.1f}", ha="center", va="center",
+                ax_heat.text(j + 0.5, i + 0.5, cell_label(val), ha="center", va="center",
                              fontsize=cell_fs, color="black" if lum > 0.45 else "white")
 
     ax_heat.set_xlim(0, N_DEC); ax_heat.set_ylim(0, N_DEC); ax_heat.set_aspect("auto")
     ax_heat.set_xticks(np.arange(N_DEC + 1)); ax_heat.set_yticks(np.arange(N_DEC + 1))
-    ax_heat.set_xticklabels([f"{v:.2f}" for v in teff_edges_desc], fontsize=5, rotation=90)
+    ax_heat.set_xticklabels([f"{v:.2f}" for v in teff_edges_desc], fontsize=5, rotation=0)
     ax_heat.tick_params(labelleft=False)
 
     yc = np.arange(N_DEC) + 0.5
@@ -144,7 +161,7 @@ def draw_heatmap(ax_heat, ax_left, ax_bottom, ax_cbar, d, fig,
                        ecolor=color_bottom, elinewidth=0.8, capsize=2, alpha=0.8, label="95% CI")
     ax_bottom.set_xlim(0, N_DEC); ax_bottom.set_ylim(0, 100); ax_bottom.margins(x=0)
     ax_bottom.set_xticks(np.arange(N_DEC + 1))
-    ax_bottom.set_xticklabels([f"{v:.2f}" for v in teff_edges_desc], fontsize=5, rotation=90)
+    ax_bottom.set_xticklabels([f"{v:.2f}" for v in teff_edges_desc], fontsize=5, rotation=0)
     ax_bottom.set_xlabel(x_label); ax_bottom.grid(True, alpha=0.3); ax_bottom.set_axisbelow(True)
     plt.setp(ax_heat.get_xticklabels(), visible=False)
     ax_heat.tick_params(axis="x", labelbottom=False)

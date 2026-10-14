@@ -71,8 +71,9 @@ N_FINDER_SAMPLES = N_TIPPING_SAMPLES_BISECT  # 100 tipping samples during findin
 
 # ── canonical NDC baseline resilience (from 09) ───────────────────────────────────
 rate_str = f"{int(round(RATE_THRESHOLD * 100)):02d}"  # 0.04 -> "04"
+_RBASE = os.environ.get("PERI_RESILIENCE_BASE", "output/resilience")   # switchable to resilience_alt
 summary_csv = (
-    f"output/resilience/resilience_conditions_time{YEAR_TARGET}"
+    f"{_RBASE}/resilience_conditions_time{YEAR_TARGET}"
     f"_temp{TEMP_THRESHOLD}_rate{rate_str}/summary/"
     f"resilience_summary_time{YEAR_TARGET}_temp{TEMP_THRESHOLD}_rate{rate_str}.csv"
 )
