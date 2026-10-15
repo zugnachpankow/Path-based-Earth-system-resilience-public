@@ -332,7 +332,7 @@ def plot_calculator_combined(output_stem):
     Xc, Yc = np.meshgrid(np.arange(4), np.arange(4))
     pcm_c = ax_c.pcolormesh(Xc, Yc, Zc, cmap=cmcs.batlow, shading="flat", vmin=0, vmax=100)
     _cbc = fig.colorbar(pcm_c, ax=ax_c, fraction=0.046, pad=0.03)
-    _cbc.set_label("NDC-2035 cut for +10 %pt [%]", fontsize=6)
+    _cbc.set_label("Cut below NDC baseline in 2035\nfor +10 %pt target [%]", fontsize=6)
     for i in range(3):
         for j in range(3):
             if reach[i, j]:
@@ -341,14 +341,16 @@ def plot_calculator_combined(output_stem):
                 # "white if >50" would put white text on light cells.
                 r, g, b, _ = cmcs.batlow(Rpct[i, j] / 100.0)
                 col = "black" if (0.299 * r + 0.587 * g + 0.114 * b) > 0.45 else "white"
-                ax_c.text(j + 0.5, i + 0.5, f"−{Rpct[i, j]:.0f}%\n(−{co2[i, j]:.1f} Gt)",
+                ax_c.text(j + 0.5, i + 0.5, f"−{Rpct[i, j]:.0f}%\n(−{co2[i, j]:.1f} GtCO₂)",
                           ha="center", va="center", fontsize=5.5, color=col, linespacing=1.2)
             elif status[i, j] == "max_cut_insufficient":
-                # not reachable even at a 99% cut -> hatch
+                # not reachable even at a 99% cut -> light hatch with a dark label on top
                 ax_c.add_patch(plt.Rectangle((j, i), 1, 1, fill=False, hatch="////",
-                                             edgecolor="0.55", linewidth=0.0, zorder=2.3))
-                ax_c.text(j + 0.5, i + 0.5, f"max +{gainpp[i, j]:.1f} pt\n(99% cut)",
-                          ha="center", va="center", fontsize=5, color="0.3", linespacing=1.2)
+                                             edgecolor="0.72", linewidth=0.0, zorder=2.3))
+                ax_c.text(j + 0.5, i + 0.5, f"max +{gainpp[i, j]:.1f} %pt\n(99% cut)",
+                          ha="center", va="center", fontsize=5, color="black", linespacing=1.2,
+                          zorder=2.6, bbox=dict(boxstyle="round,pad=0.1", facecolor="white",
+                                                alpha=0.6, edgecolor="none"))
             else:  # met_at_ndc -> light fill, no hatch
                 ax_c.add_patch(plt.Rectangle((j, i), 1, 1, facecolor="0.9",
                                              edgecolor="none", zorder=2.2))
@@ -357,11 +359,11 @@ def plot_calculator_combined(output_stem):
     ax_c.set_xlim(0, 3); ax_c.set_ylim(0, 3); ax_c.set_aspect("auto")
     ax_c.set_xticks(range(4)); ax_c.set_xticklabels([f"{v:.2f}" for v in teff_edges])
     ax_c.set_yticks(range(4)); ax_c.set_yticklabels([f"{v:.2f}" for v in tcre_edges])
-    ax_c.set_xlabel("Effective tipping temperature (°C)")
-    ax_c.set_ylabel("TCRE (K per 1000 PgC)")
+    ax_c.set_xlabel("Effective tipping temperature [°C]")
+    ax_c.set_ylabel("TCRE [K per 1000 PgC]")
     ax_c.text(0.0, 1.02, "c", transform=ax_c.transAxes, fontsize=8,
               fontweight="bold", va="bottom", ha="left", clip_on=False)
-    ax_c.text(0.0, 1.02, "Ambition required vs. Earth-system fragility (+10 %pt)",
+    ax_c.text(0.0, 1.02, "Ambition required vs. Earth system fragility (+10 %pt)",
               transform=ax_c.transAxes + _lbl_off, fontsize=6, fontstyle="italic",
               va="bottom", ha="left", color="#444444", clip_on=False)
 
