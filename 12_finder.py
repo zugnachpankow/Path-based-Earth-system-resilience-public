@@ -1,9 +1,8 @@
 """12_finder.py — minimum additional NDC reduction for a target resilience gain.
 
-Simplified single-stage bisection (drops the old calculator's Stage1/Stage2 split
-and multiple epsilons). Seeded from the previously converged reduction fractions so
-it only has to refine, at reduced resolution: 10 stochastic FAIR runs + 100 tipping
-samples per evaluation. The canonical NDC baseline resilience is read from the 09
+Single-stage bisection, seeded from initial guesses for R (from earlier calculator
+runs) so it only has to refine, at reduced resolution: 10 stochastic FAIR runs + 100
+tipping samples per evaluation. The canonical NDC baseline resilience is read from the 09
 resilience summary, so the gain is defined identically to the main pipeline.
 
 Publishable finder. Heavy -> submit via SLURM (do not run on the login node).
@@ -47,8 +46,8 @@ FORCING_FILE   = "data/processed/NGFS_forcing.csv"
 PARAMS_FILE    = FAIR_PARAMS            # single calibration (v1.4.0) via src/fair_config
 SPECIES_FILE   = SPECIES_CONFIGS_NGFS
 
-# Old converged reductions, per gain — used to seed the bracket so the finder only
-# has to refine (fast). We have both +1% and +10% from the previous calculator runs.
+# Initial guesses for R, per gain — used to seed the bracket so the finder only
+# has to refine (fast). Both +1% and +10% come from earlier calculator runs.
 SEEDS_BY_GAIN = {
     0.01: "data/reference/finder_seeds_gain0.01.csv",
     0.10: "data/reference/finder_seeds_gain0.10.csv",
@@ -86,7 +85,7 @@ target_resilience   = baseline_resilience + TARGET_GAIN
 print(f"NDC baseline resilience = {baseline_resilience:.6f}  "
       f"-> target = {target_resilience:.6f} (+{TARGET_GAIN})")
 
-# ── seeds (previously converged reduction fractions) ──────────────────────────────
+# ── seeds: initial guesses for R, from earlier calculator runs ─────────────────────
 seeds = {}
 if SEEDS_CSV and os.path.exists(SEEDS_CSV):
     sdf = pd.read_csv(SEEDS_CSV)
@@ -109,9 +108,8 @@ assert_configs_match_ensemble()   # params file must match the ensemble's config
 lhs_params = sample_lhs_params(n_samples=N_FINDER_SAMPLES, seed=FINDER_LHS_SEED)
 
 # ── bisection per target year ─────────────────────────────────────────────────────
-# Seed the bracket from the old converged reductions wherever we have them (+1% and
-# +10%) so the finder only refines. Fall back to the full uncapped bracket [0, 0.99]
-# only for target years with no seed.
+# Seed the bracket from the initial guesses wherever we have them (+1% and +10%) so the
+# finder only refines. Fall back to the full bracket [0, 0.99] for target years with no seed.
 results = []
 for ty in TARGET_YEARS:
     if ty in seeds:

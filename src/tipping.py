@@ -310,7 +310,7 @@ class Earth_System():
         return net
 
 
-# ── importable tipping computation (extracted verbatim from the per-scenario run) ──
+# ── importable tipping computation ─────────────────────────────────────────────────
 elements = ["GIS", "THC", "WAIS", "AMAZ"]
 
 

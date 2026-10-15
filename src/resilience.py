@@ -35,8 +35,7 @@ def compute_running_means(temperature, scenarios, window=20, baseline=(1850, 190
     """Per-member rebased, 20-yr centred running-mean GMST per scenario.
 
     Members are the (run, config) combinations. The baseline is each member's own weighted
-    mean over ``baseline`` (1850..1901 inclusive, half weights on the two endpoints) — the
-    rebase now replaces the earlier single ensemble-mean scalar baseline, and both the
+    mean over ``baseline`` (1850..1901 inclusive, half weights on the two endpoints). Both the
     running mean and the rebase live in src/temperature.py (shared with the tipping forcing).
     Returns ``{scenario: DataArray(timebounds, member)}``.
     """

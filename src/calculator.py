@@ -120,8 +120,8 @@ def aggregate_temperature_from_runs(run_dir, scenario_name, max_runs=None):
 
     # per-member 1850–1901 rebase -> 20-yr centred running mean, via the single
     # shared implementation in src/temperature.py (same as resilience.py and the
-    # tipping forcing), replacing the old ensemble-mean scalar baseline so the
-    # calculator's resilience matches the main pipeline member-for-member.
+    # tipping forcing), so the calculator's resilience matches the main pipeline
+    # member-for-member.
     run_mean = processed_temperature(raw_temp.stack(member=("run", "config")))
 
     return raw_temp, run_mean, configs, runs

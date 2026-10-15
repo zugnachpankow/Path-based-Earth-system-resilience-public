@@ -63,7 +63,7 @@ _NOX_NO2_PER_NO = 46.006 / 30.006
 def reconstruct_nox_emissions(df_emis, scenario, region, year_cols):
     """Total NOx (Mt NO2/yr) over ``year_cols``, GFED sectors NO->NO2 corrected.
 
-    Verbatim port of the fair-calibrate v1.4.0 NOx fix: the four GFED
+    Follows the fair-calibrate v1.4.0 NOx handling: the four GFED
     biomass-burning sectors are summed and scaled by 46.006/30.006, then the
     Agriculture and Fossil & Industrial sectors are added. ``year_cols`` is the
     ordered list of year column labels to return.

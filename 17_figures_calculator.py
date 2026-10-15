@@ -279,7 +279,7 @@ def plot_calculator_combined(output_stem):
     ax_b.scatter(2035, cand10_at, color=traj_cols["T2035_10"], s=12, zorder=4)
     # annotations: all-emissions cut % (CO2 part) in 2035 vs. NDC, then the confirmed gain + 95% CI
     co2_cut = float(r2035_row["co2_GtCO2"]) / 1000.0
-    # ci_low/ci_high are now the PAIRED GAIN CI (confirmator resamples the difference
+    # ci_low/ci_high are the PAIRED GAIN CI (confirmator resamples the difference
     # tensor), so they are the gain CI directly -- no baseline subtraction.
     _g1 = float(r2035_row["achieved_gain"]) * 100
     _lo1 = float(r2035_row["ci_low"]) * 100; _hi1 = float(r2035_row["ci_high"]) * 100

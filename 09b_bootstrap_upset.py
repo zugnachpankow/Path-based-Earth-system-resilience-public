@@ -1,10 +1,7 @@
 """09b_bootstrap_upset.py — crossed bootstrap CIs for the UpSet bars.
 
-Faithful port of ERI/code/bootstrap_upset_bars/bootstrap_upset_bars.py. Produces the
-95% crossed-bootstrap CIs for all seven UpSet-bar combinations (C, R, T, C+R,
-C+T, R+T, C+R+T) that 15_figures_main.py draws as error bars on panel b. Only the
-I/O paths are adapted to the cleaned pipeline; the bootstrap and criterion logic are
-kept verbatim.
+Produces the 95% crossed-bootstrap CIs for all seven UpSet-bar combinations (C, R, T,
+C+R, C+T, R+T, C+R+T) that 15_figures_main.py draws as error bars on panel b.
 
 The 7 criteria and their tensors:
   C       no climate violation        (n_cfg, n_runs, 1)

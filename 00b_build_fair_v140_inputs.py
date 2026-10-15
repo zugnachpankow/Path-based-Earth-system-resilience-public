@@ -18,8 +18,8 @@ Column renaming and override values mirror the reference script
 05_constrained-ssp-projections.py`` of fair-calibrate at tag v1.4.0, so that a
 run driven by these files reproduces the fair-calibrate v1.4.0 projections.
 
-Faithful port: logic/values are kept verbatim from the reference; nothing here
-re-derives or "improves" the calibration.
+The logic and values follow the reference exactly; nothing here re-derives or
+"improves" the calibration.
 """
 import os
 

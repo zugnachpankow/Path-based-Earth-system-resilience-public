@@ -257,11 +257,11 @@ for gain in [0.01, 0.10]:
 B = pd.DataFrame(rows)
 B.to_csv(os.path.join(OUT_DIR, "fig4_tableB_targets.csv"), index=False)
 
-# M1 check: resilience after cut == full baseline + gain (point estimate), for every row,
+# check: resilience after cut == full baseline + gain (point estimate), for every row,
 # from UNROUNDED values (so rounding to 2-3 dp can't mask a real discrepancy). For the
 # TCRE-window rows this is exact (unpaired gain); for 'all configs' it holds within the
 # NDC cross-check tolerance (paired gain vs the same-run NDC == 09 baseline).
-print(f"[M1] max |baseline + gain - after| = {max(resid_raw) * 100:.6f} pp (expect ~0)", flush=True)
+print(f"[check] max |baseline + gain - after| = {max(resid_raw) * 100:.6f} pp (expect ~0)", flush=True)
 
 _gain_ci = [f"{g:.2f} [{lo:.2f}, {hi:.2f}]" for g, lo, hi in
             zip(B["gain_pp"], B["gain_ci_low_pct"], B["gain_ci_high_pct"])]
@@ -325,7 +325,7 @@ C_out = pd.DataFrame({
 })
 C_out.to_csv(os.path.join(OUT_DIR, "fig4_tableC_grid.csv"), index=False)
 _res_c = (C["baseline_resilience"] + C["achieved_gain"] - C["achieved_resilience"]).abs()
-print(f"[Table C / M1] max |baseline + gain - after| = {_res_c.max()*100:.4f} pp (expect ~0)", flush=True)
+print(f"[Table C] max |baseline + gain - after| = {_res_c.max()*100:.4f} pp (expect ~0)", flush=True)
 with open(os.path.join(OUT_DIR, "fig4_tableC_grid.md"), "w") as fh:
     fh.write("## Table C — Fig. 4c grid: required NDC-2035 cut over TCRE × T_eff terciles (+10 pp)\n\n")
     fh.write("Each cell: TCRE tercile (841 configs) × T_eff tercile (1000-sample set). R = additional "

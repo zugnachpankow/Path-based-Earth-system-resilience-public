@@ -32,7 +32,7 @@ TAUS = {0: ("GIS", [1000, 10000, 15000]), 1: ("AMOC", [15, 50, 300]),
         2: ("WAIS", [500, 2000, 13000]), 3: ("AMAZ", [50, 100, 200])}
 # time available to tip = T_END minus the year the forcing is held from (per family;
 # compute_tip_prob holds each scenario from its own last valid year). Derived from
-# T_END (import from tipping_params), not the old hard-coded 12,700 (t_end=15000).
+# T_END (imported from tipping_params).
 # NOTE on model time: compute_tip_prob integrates t_span=(0, T_END) with the forcing
 # as interp1d over the CALENDAR-YEAR timebounds (t is a calendar year, not rebased to
 # t=0 at the first forcing year). So the window is T_END - hold_year directly (model

@@ -1,9 +1,8 @@
 """Emission-unit conversion built on fair's own unit tables.
 
-Replaces the hand-written ``unit_conversion`` dict in 01 (which silently left a
-pair unconverted whenever it was missing, via ``if factor:``). ``convert_emissions``
-resolves the factor from ``fair.structure.units`` and *raises* on an unknown
-prefix/compound/time token, so an unhandled unit can never slip through silently.
+``convert_emissions`` resolves the factor from ``fair.structure.units`` and
+*raises* on an unknown prefix/compound/time token, so an unhandled unit can
+never slip through silently.
 
 The NOx relabel (``Mt NO2/yr`` == ``Mt NOx/yr``) is handled natively: fair's
 ``compound_convert['NO2']['NOx'] == 1.0``.

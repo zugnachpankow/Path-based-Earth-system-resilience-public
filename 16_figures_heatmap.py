@@ -1,7 +1,6 @@
 """16_figures_heatmap.py — TCRE × T_eff resilience heatmaps + fragility (Fig. 3).
 
-Replaces the old GFP × tipping-susceptibility heatmap. Both axes are now physical and
-scenario-independent:
+Both axes are physical and scenario-independent:
   * y — TCRE per config (output/feedback/tcre.csv, from 11); high TCRE = fragile.
   * x — effective tipping temperature T_eff per LHS sample
         (output/feedback/t_eff_lhs1000.csv, from 11); low T_eff = fragile.
@@ -182,8 +181,8 @@ print("Saved resilience_fragility_diagonal_scenarios.{pdf,png}", flush=True)
 # combined figure: (a) NZ2050 heatmap + (b) fragility diagonal
 # ══════════════════════════════════════════════════════════════════════════════
 if nz2050_data is not None:
-    # ── caption numbers (item 9): configs per TCRE decile + Clopper-Pearson one-sided
-    # 97.5% bounds for that n, and how many NZ2050 cells are exactly 0 vs "<0.1" ──────
+    # ── caption numbers: configs per TCRE decile + Clopper-Pearson one-sided 97.5%
+    # bounds for that n, and how many NZ2050 cells are exactly 0 vs "<0.1" ────────────
     _cfg = nz2050_data["cfg_per_row"]
     _nmin, _nmax = int(_cfg.min()), int(_cfg.max())
     _piv = nz2050_data["pivot"]

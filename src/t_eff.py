@@ -2,8 +2,8 @@
 
 T_eff is the lowest constant GMT (held from t=0) at which ANY tipping element crosses
 x>0 before T_END. The model path (Earth_System: tau conversion, signs, couplings,
-initial state) is imported from src/tipping.py unchanged -- only the thin solve/
-bisection wrapper lives here, so 07's compute_tip_prob is untouched.
+initial state) is imported from src/tipping.py so it matches compute_tip_prob exactly;
+only the thin solve/bisection wrapper lives here.
 
 Heavy (~10k ODE solves per 1000-sample set); parallel over samples via joblib,
 respecting SLURM_CPUS_PER_TASK. Driven from 11; results -> output/feedback/t_eff_*.csv.

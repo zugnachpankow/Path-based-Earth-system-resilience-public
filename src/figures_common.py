@@ -45,7 +45,7 @@ RESILIENCE_BASE    = os.environ.get("PERI_RESILIENCE_BASE", str(OUTPUT / "resili
 FIG_DIR            = str(REPO / "figures")
 TABLE_DIR          = str(REPO / "tables")
 
-# ── Nature figure style (verbatim from plot.py) ────────────────────────────────
+# ── Nature figure style ────────────────────────────────────────────────────────
 MM = 1 / 25.4
 ONE_COL   = 89  * MM
 MID_COL   = 136 * MM

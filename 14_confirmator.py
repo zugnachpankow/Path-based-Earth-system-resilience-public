@@ -325,7 +325,7 @@ for ty, red in sorted(reductions.items()):
         "reduction_vs_ndc2030_GtCO2": res["reduction_vs_ndc2030_GtCO2"],
         "reduction_vs_ndc2030_frac": res["reduction_vs_ndc2030_frac"],
         "ndc_2030_GtCO2": res["ndc_2030_GtCO2"],
-        # bootstrap is now over the PAIRED gain; ci_* are the gain CI directly
+        # bootstrap is over the PAIRED gain; ci_* are the gain CI directly
         "bootstrap_gain": boot["mean"], "ci_low": boot["ci_low"],
         "ci_high": boot["ci_high"], "ci_half_width": boot["ci_half_width"],
         "target_gain": TARGET_GAIN, "temp_threshold": TEMP_THRESHOLD, "rate_threshold": RATE_THRESHOLD,

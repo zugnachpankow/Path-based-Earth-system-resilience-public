@@ -1,17 +1,15 @@
 """33_coarse_grid.py — coarse screening grid of path-based resilience across the SSPs.
 
-Faithful port of the coarse-grid block of ERI/code/sensitivity/study.py. For every
-SSP it evaluates resilience (with tipping) over a coarse grid of the three criterion
-thresholds. Produces the raw grid only; the summary (Blocks 1 & 2 of Methods 6.4) is
-tabulated together with the LHS-MC results by 34_tables_si_sensitivity.py.
+For every SSP it evaluates resilience (with tipping) over a coarse grid of the three
+criterion thresholds. Produces the raw grid only; the summary (Blocks 1 & 2 of
+Methods 6.4) is tabulated together with the LHS-MC results by 34_tables_si_sensitivity.py.
 
-Grid (verbatim from study.py):
+Grid:
   res_x (return year)      = [2080, 2090, 2100, 2110, 2120]
   res_y (temperature, C)   = linspace(1.3, 2.0, 10)
   rate  (C/yr)             = linspace(0.03, 0.06, 10)
   tipping                  = on
--> 500 grid points x 8 SSPs. Resilience via src/sensitivity.resilience_index (identical
-to study.py's compute_resilience).
+-> 500 grid points x 8 SSPs. Resilience via src/sensitivity.resilience_index.
 
 Reads the temperature ensemble (output/all_scenarios_temperature.nc, lazily, per
 scenario) + output/tipping/*.nc. Data-heavy -> submit via SLURM (run_33.sh).
@@ -41,7 +39,7 @@ SENS_DIR         = "output/sensitivity"; os.makedirs(SENS_DIR, exist_ok=True)
 
 SSPS = ["ssp119", "ssp126", "ssp245", "ssp370", "ssp434", "ssp460", "ssp534-over", "ssp585"]
 
-# grid (verbatim from study.py)
+# grid
 RES_X_VALS = [2080, 2090, 2100, 2110, 2120]
 RES_Y_VALS = np.linspace(1.3, 2.0, 10)
 RATE_VALS  = np.linspace(0.03, 0.06, 10)

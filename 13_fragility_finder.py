@@ -1,6 +1,6 @@
 """13_fragility_finder.py — required NDC cut vs Earth-system fragility (TCRE × T_eff).
 
-Replaces the old GFP-percentile finder. Two modes (positional arg):
+Two modes (positional arg):
 
     python 13_fragility_finder.py grid     # Fig 4c: 3×3 grid of TCRE × T_eff terciles, gain +10pp
     python 13_fragility_finder.py tcre      # SI: 1D TCRE percentile windows, gains +1pp / +10pp
@@ -69,7 +69,7 @@ MAX_ITER  = 12
 N_RUNS    = 10          # higher-res search so confirmed gains land near target
 N_SAMPLES = 100         # finder tipping samples
 
-FINDER_LHS_SEED = 4321  # finder's own 100-point LHS ("F3"); matches 11 t_eff_finder
+FINDER_LHS_SEED = 4321  # finder's own 100-point LHS; matches 11 t_eff_finder
 TERCILE_Q = [100.0 / 3.0, 200.0 / 3.0]
 
 os.makedirs(WORKSPACE, exist_ok=True)

@@ -12,12 +12,9 @@ check, same output file names/formats — but writes to BASE_PATH = output/resil
     .astype(float32) for crossed_bootstrap(T, B=1000, seed=0) -> bit-identical to 09.
   * point estimate = T.sum() / T.size (float64).
   * writes a SLIM per-scenario CSV with only (config, run, resilience_cr) under the same file
-    name (the full per-(config,run,sample) explosion that 09 wrote — ~531 GB total — is gone;
-    downstream 16/si23 only ever use resilience_cr per (config, run)).
+    name (the slim CSV avoids the full per-(config,run,sample) explosion; downstream
+    16/si23 only use resilience_cr per (config, run)).
   * writes the stats and summary CSVs with exactly 09's columns, row order and solver merge.
-
-Equivalence with 09 is verified separately (see the early/final check scripts) before this
-replaces 09 in git.
 """
 import os
 os.environ.setdefault("OMP_NUM_THREADS", "1")   # before numpy; avoid BLAS oversubscription
@@ -50,7 +47,7 @@ CONDITIONS = [
 
 
 def _rate_str(rate):
-    return str(round(rate * 10, 4)).replace(".", "")   # 0.04 -> "04"  (verbatim from 09)
+    return str(round(rate * 10, 4)).replace(".", "")   # 0.04 -> "04"
 
 
 def _tag(name, res_x, res_y, rate):
@@ -108,7 +105,7 @@ def main():
         running_mean_temps = pickle.load(f)
     running_mean_temps = {k.replace("(", "").replace(")", ""): v for k, v in running_mean_temps.items()}
 
-    # solver report check — verbatim from 09 (refuse to process on any failed solve)
+    # solver report check: refuse to process if any tipping solve failed
     SOLVER_REPORT = join(TIPPING_DIR, "solver_report.csv")
     solver_report_df = None
     if os.path.exists(SOLVER_REPORT):
@@ -157,7 +154,7 @@ def main():
             "scenario": r["scenario"], "resilience": r["resilience"],
             "resilience_ci_low": r["resilience_ci_low"], "resilience_ci_high": r["resilience_ci_high"],
         } for r in ordered])
-        # attach per-scenario solver counts — verbatim merge from 09
+        # attach per-scenario solver counts
         if solver_report_df is not None:
             clean = solver_report_df.copy()
             clean["scenario"] = clean["scenario"].str.replace(r"[\(\)]", "", regex=True)

@@ -50,7 +50,7 @@ def resilience_index(rm, res_x, res_y, rate, tipping_switch, tip_prob):
 
 def run_sobol_mc(rm, tip_prob, save_path, sc, N=1024, N_mc=10000):
     tip_prob_sc = tip_prob   # no fillna(0): NaN tipping solves stay NaN and are
-    # dropped by the NaN-aware averaging in resilience_index (STEP 6)
+    # dropped by the NaN-aware averaging in resilience_index
     sobol_path  = save_path + f"sobol_{sc}.pkl"
     mc_path     = save_path + f"mc_{sc}.pkl"
 

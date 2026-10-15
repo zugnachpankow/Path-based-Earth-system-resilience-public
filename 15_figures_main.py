@@ -1,20 +1,17 @@
-"""14_figures_main.py — main-paper figures.
+"""15_figures_main.py — main-paper figures.
 
-Ported from the canonical ERI/plots/results_nature/plot.py. Unlike the original
-monolith, this consumes the cleaned pipeline's PRE-COMPUTED outputs instead of
-recomputing them:
+Consumes the cleaned pipeline's pre-computed outputs:
   * running means   -> output/running_mean_temps.pkl        (08)
   * tipping         -> output/tipping/*.nc                   (07)
   * ECS / T@2100    -> output/feedback/df_params_all.pkl     (11; slim: scenario,config,run,ecs,temp)
   * Sobol           -> output/sensitivity/sobol_*.pkl        (10; optional)
   * resilience      -> output/resilience/.../summary/*.csv   (09)
 
-Style, helpers and figure logic are kept verbatim; only paths and the (optional)
-Sobol / bootstrap-CI inputs are adapted/guarded so the script runs before those
-are available.
+The Sobol and bootstrap-CI inputs are optional and guarded, so the script runs before
+those are available.
 
 Figures produced:
-  * C1 — trajectories + UpSet, per main scenario × 3 criterion sets (plain and
+  * Trajectories + UpSet, per main scenario × 3 criterion sets (plain and
     ECS-coloured variant; the NZ2050 ECS variant also carries the 3-SSP Sobol panel c).
   (The TCRE × T_eff resilience heatmap is a separate figure — see 16_figures_heatmap.py.)
 """
@@ -88,8 +85,8 @@ print(f"UpSet bootstrap CIs for {len(_upset_ci)} scenario(s)", flush=True)
 MAX_TRAJ = 2500
 
 # ══════════════════════════════════════════════════════════════════════════════
-# C1 — trajectories + UpSet, per main scenario × 3 criterion sets
-# (verbatim from plot.py; plain + ECS-coloured variant with the NZ2050 Sobol panel)
+# Trajectories + UpSet, per main scenario × 3 criterion sets
+# (plain + ECS-coloured variant with the NZ2050 Sobol panel)
 # ══════════════════════════════════════════════════════════════════════════════
 for _res_y, _rate, _sub in [
     (res_y, rate, "trajectories"),
@@ -101,7 +98,7 @@ for _res_y, _rate, _sub in [
     # UpSet bootstrap CIs (09b) exist only for the standard criterion; don't attach
     # them to the alternative-demand panels (2.0 °C, 0.03) where the bar values differ.
     _is_std = (_res_y == res_y and _rate == rate)
-    for scenario in tqdm(main_scenarios, desc=f"C1 {_res_y}°C / {_rate*10:.1f}K/dec"):
+    for scenario in tqdm(main_scenarios, desc=f"Trajectories {_res_y}°C / {_rate*10:.1f}K/dec"):
         if scenario not in running_mean_temps:
             print(f"  Skipping {scenario}: no running mean data", flush=True)
             continue
@@ -470,4 +467,4 @@ for _res_y, _rate, _sub in [
             fig_e.savefig(f"{_traj_dir}/{safe_name}_upset_ecs.png", bbox_inches='tight')
             plt.close(fig_e)
 
-print(f"\nC1 trajectories written under {FIG_DIR}/trajectories[/2deg,/0o3K]", flush=True)
+print(f"\nTrajectories written under {FIG_DIR}/trajectories[/2deg,/0o3K]", flush=True)

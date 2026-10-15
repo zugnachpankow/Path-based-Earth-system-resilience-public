@@ -2,8 +2,7 @@
 and the tipping forcing (src/run_tipping.py).
 
 processed_temperature(da) = per-member 1850-1900 rebase -> 20-yr centred running mean.
-The 20-yr running-mean code lives here only (moved out of src/resilience.py); the per-member
-rebase replaces the single ensemble-mean scalar baseline that resilience.py used before.
+The 20-yr running-mean code and the per-member rebase live here, shared by both callers.
 """
 import numpy as np
 import xarray as xr

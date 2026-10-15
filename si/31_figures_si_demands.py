@@ -1,11 +1,11 @@
 """31_figures_si_demands.py — SI: path-based resilience under alternative safety demands.
 
-Two-row version of the main-text C1 trajectory+UpSet figure for a representative scenario
+Two-row version of the main-text trajectory+UpSet figure for a representative scenario
 (Net Zero 2050), under the two alternative criterion sets:
   (a) temperature 2.0 °C, rate 0.4 °C/decade, 2100
   (b) temperature 1.5 °C, rate 0.3 °C/decade, 2100
 Each row: safe/unsafe running-mean trajectories (tipping-weighted line widths) + the UpSet
-bars of the criterion combinations. Logic verbatim from 15_figures_main.py (C1 plain).
+bars of the criterion combinations, matching 15_figures_main.py.
 
 Reads output/running_mean_temps.pkl (08) + output/tipping/*.nc (07). Heavy (running-mean
 pickle) -> submit via SLURM (run_31.sh).
@@ -54,7 +54,7 @@ def _row(row_i, res_y_c, rate_c, letter, subtitle):
     inner = GridSpecFromSubplotSpec(2, 1, subplot_spec=gs[1], height_ratios=[2.5, 1], hspace=0.04)
     ax_bars, ax_matrix = fig.add_subplot(inner[0]), fig.add_subplot(inner[1])
 
-    # ── criterion (verbatim from 15) ──
+    # ── criterion ──
     climate_violation = (rm_all.sel(timebounds=slice(res_x, None)) > res_y_c).any("timebounds")
     roc = rm_all.diff("timebounds").rolling(timebounds=10, center=True).mean()
     rate_violation = (roc.sel(timebounds=slice(2000, 2096)) > rate_c).any("timebounds")

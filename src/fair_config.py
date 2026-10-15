@@ -4,7 +4,7 @@ and the natural (solar + volcanic) forcing used by every scenario family.
 Single source of truth so the Monte-Carlo runner and the calculator build FAIR
 identically. The natural forcing and the per-config solar/volcanic scaling follow
 the fair-calibrate v1.4.0 reference projection script
-``.../constraining/05_constrained-ssp-projections.py`` verbatim.
+``.../constraining/05_constrained-ssp-projections.py``.
 """
 import os
 import tempfile

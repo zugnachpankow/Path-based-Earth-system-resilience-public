@@ -1,8 +1,7 @@
 """Scenario-independent Earth-system axes: TCRE, effective tipping temperature, SI PCA.
 
-Replaces the old GFP / RF-tipping-susceptibility analysis. Writes three physical,
-scenario-independent quantities consumed by the heatmaps (16) and the calculator
-figures (17), plus one SI diagnostic:
+Writes three physical, scenario-independent quantities consumed by the heatmaps (16)
+and the calculator figures (17), plus one SI diagnostic:
 
   * output/feedback/tcre.csv          — per config: TCR, cumulative C at 2xCO2, TCRE, ECS
                                         (FAIR 2.2.3, v1.4.0 params, concentration-driven
@@ -15,9 +14,8 @@ figures (17), plus one SI diagnostic:
                                         climate-feedback parameters kappa1 (ocean_heat_transfer[0])
                                         and epsilon (deep_ocean_efficacy), oriented +corr with ECS.
 
-The RF tipping test, the 16-parameter tipping PCA and the (scenario, config, run) GFP
-table are all removed from the main path. T_eff is heavy (~10k ODE solves per set) and
-parallel over SLURM_CPUS_PER_TASK -> submit via SLURM.
+T_eff is heavy (~10k ODE solves per set) and parallel over SLURM_CPUS_PER_TASK ->
+submit via SLURM.
 """
 import os
 import pickle
@@ -46,7 +44,7 @@ RUNNING_MEANS_FILE = "output/running_mean_temps.pkl"
 SAVE_DIR = "output/feedback"
 os.makedirs(SAVE_DIR, exist_ok=True)
 
-FINDER_LHS_SEED = 4321      # finder's separate 100-point LHS ("F3"); matches 13
+FINDER_LHS_SEED = 4321      # finder's separate 100-point LHS; matches 13
 N_FINDER = 100
 
 # config set / run / scenario coords of the run-output ensemble (guard: TCRE/PCA
@@ -166,10 +164,9 @@ print(f"Wrote {os.path.join(SAVE_DIR, 'config_pca.csv')}", flush=True)
 # ══════════════════════════════════════════════════════════════════════════════
 # Slim per-(scenario, config, run) table for the ECS figures (15, si/20, si/23)
 # ══════════════════════════════════════════════════════════════════════════════
-# Only ECS (per config, the SAME value as tcre.csv — computed once and broadcast to
-# all runs, so the figures and the new TCRE axis cannot disagree) and the 2100
-# running-mean temperature (merged on the (config, run) LABELS, not by position).
-# The old GFP / parameter columns are gone; GFP-specific figures use config_pca.csv.
+# Only ECS (per config, the same value as tcre.csv — computed once and broadcast to
+# all runs, so the figures and the TCRE axis agree) and the 2100 running-mean
+# temperature (merged on the (config, run) labels, not by position).
 ecs_per_config = pd.Series(ECS, index=configs)
 with open(RUNNING_MEANS_FILE, "rb") as fh:
     running_mean_temps = pickle.load(fh)

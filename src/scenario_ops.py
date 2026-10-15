@@ -1,8 +1,8 @@
 """Emission-scenario construction shared by the calculator and the figures.
 
 Kept light (numpy + pandas only, no FAIR/pycascades) so figure scripts can build
-the *same* candidate the calculator simulates -- one rule, one place. Reimplementing
-this inline is exactly what produced the old Fig. 4b straight-line bug.
+the *same* candidate the calculator simulates -- one rule, one place, so the base
+scenario's shape is kept identically everywhere.
 """
 import numpy as np
 import pandas as pd
@@ -18,7 +18,7 @@ def build_candidate_scenario(df_emissions, years, year_cols,
 
     ``baseline_map`` {variable: natural background emission} clamps each species at its
     natural floor (FaIR ``baseline_emissions``), matching the Current-Policies branch-off
-    grid (02). If None, species clamp at 0 (legacy behaviour). The reduction only ever
+    grid (02). If None, species clamp at 0. The reduction only ever
     lowers emissions and never raises a species already below its background; at
     ``reduction_frac == 0`` the candidate reproduces the base exactly.
 

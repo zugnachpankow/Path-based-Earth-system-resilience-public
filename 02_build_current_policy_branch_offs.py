@@ -63,8 +63,8 @@ def apply_absolute_reduction(
     The floor is the species' natural background (fair ``baseline_emissions``). A
     species whose start value is already at or below that background -- including
     net-negative emitters such as CO2 AFOLU -- is held constant from the start year:
-    there is nothing left to reduce, and the old code (abs_amount = rate*start_value,
-    which is < 0 for a negative start) made the value RISE every year instead.
+    there is nothing left to reduce, and a proportional reduction (abs_amount =
+    rate*start_value, which is < 0 for a negative start) would make the value RISE.
     """
     out = row.copy()
     years_float = np.array([float(y) for y in year_cols])
