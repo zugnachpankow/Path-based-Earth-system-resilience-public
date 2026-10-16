@@ -88,6 +88,12 @@ conda env create -f environment.yml
 conda activate fair
 ```
 
+### Create the log directories
+SLURM opens each job's `--output=logs/other/...` file *before* the job body runs, so create these once after cloning (the `batch/run_*.sh` scripts also `mkdir -p` them, but that happens too late for the first job's own log):
+```bash
+mkdir -p logs/other logs/tipping
+```
+
 ---
 
 ## Usage
@@ -170,8 +176,8 @@ Written in Python 3.14; exact versions are pinned in [`environment.yml`](environ
 
 | Package | Version | Citation |
 |---|---|---|
-| FaIR | 2.2.3 | Leach et al. (2021), *FaIRv2.0.0*, Geosci. Model Dev. 14, 3007–3036. Calibration data: Smith (2024), Zenodo [10.5281/zenodo.10566813](https://doi.org/10.5281/zenodo.10566813) |
-| pycascades | 1.0.2 | Wunderling et al. (2021), *pycascades: a Python framework for simulating tipping cascades on complex networks*, Eur. Phys. J. Spec. Top. |
+| FaIR | 2.2.3 | Leach et al. (2021), *FaIRv2.0.0*, Geosci. Model Dev. 14, 3007–3036. Calibration data: Smith (2024), Zenodo [10.5281/zenodo.10566646](https://doi.org/10.5281/zenodo.10566646) |
+| pycascades | 1.0.2 | Wunderling et al. (2021), *Modelling nonlinear dynamics of interacting tipping elements on complex networks: the PyCascades package*, Eur. Phys. J. Spec. Top. |
 | SALib | 1.5.2 | Herman & Usher (2017), JOSS 2(9):97; Iwanaga, Usher & Herman (2022), *Toward SALib 2.0* |
 | Scientific colour maps (`cmcrameri`) | 1.9 | Crameri, Zenodo [10.5281/zenodo.1243862](https://doi.org/10.5281/zenodo.1243862); Crameri, Shephard & Heron (2020), *The misuse of colour in science communication*, Nat. Commun. 11:5444 |
 

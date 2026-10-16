@@ -95,7 +95,7 @@ def apply_absolute_reduction(
 
 #  apply for multiple start years and rates
 reduction_rates = np.arange(0.01, 0.105, 0.01)    # 0% .. 10% inclusive
-starting_years = np.arange(2020.5, 2055.5, 5.0)    # 2020.5 .. 2100.5 inclusive
+starting_years = np.arange(2020.5, 2055.5, 5.0)    # 2020.5 .. 2050.5 inclusive
 
 # natural background floor per species (fair baseline_emissions, converted to
 # each variable's CSV unit). reductions clamp here, not at 0 (see

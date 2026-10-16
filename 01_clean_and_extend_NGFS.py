@@ -10,6 +10,9 @@ from units import convert_emissions
 
 """This script cleans and extends the NGFS scenarios for use in FAIR."""
 
+# data/processed/ is git-ignored; create it so a fresh clone can write the outputs below
+os.makedirs("data/processed", exist_ok=True)
+
 # before loading need to clean the ° by hand, because cannot be read otherwise, also cleaned and shortened variable names
 df_to_clean = pd.read_csv("data/raw/NGFS_cleaned_IAM_all.csv")
 

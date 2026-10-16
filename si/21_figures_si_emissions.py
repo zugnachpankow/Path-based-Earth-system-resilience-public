@@ -103,8 +103,11 @@ scen = [s for s in ngfs["scenario"].unique()
         if "REMIND" in s and "start" not in s and "GCAM" not in s and "MESSAGE" not in s]
 for sc in scen:
     y = _co2_series(ngfs, sc, yc, "CO2 FFI", "CO2 AFOLU")
-    col, ls = _style_for(sc)
-    axb.plot(yrs[mask], y[mask], color=col, linestyle=ls, lw=1.2, label=get_scenario_type(sc), zorder=3)
+    # style/label keys drop the parentheses the NGFS CSV keeps (e.g. "(NDCs)"), matching
+    # main_scenarios and the running-mean keys used by 15/16, so NDC gets its colour/name.
+    sc_clean = sc.replace("(", "").replace(")", "")
+    col, ls = _style_for(sc_clean)
+    axb.plot(yrs[mask], y[mask], color=col, linestyle=ls, lw=1.2, label=get_scenario_type(sc_clean), zorder=3)
 
 # (c) branch-offs, coloured by reduction rate
 rates = sorted({float(re.search(r"_r(\d+\.?\d*)", s).group(1)) for s in bo_scen

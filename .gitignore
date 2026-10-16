@@ -59,8 +59,6 @@ run_checkrate.sh
 # Ship ONLY the open FAIR calibration files (whitelisted individually). NGFS scenario
 # data is LICENSED — it must NEVER be committed. RCMIP is downloaded by the user.
 !data/raw/
-!data/raw/calibrated_constrained_parameters_calibration1.4.1.csv
-!data/raw/species_configs_properties_calibration1.4.1.csv
 !data/raw/species_configs_properties_NGFS.csv
 !data/raw/fair_units_reference.csv
 !data/raw/fair_variables_reference.csv
